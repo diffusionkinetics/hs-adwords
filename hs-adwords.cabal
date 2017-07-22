@@ -1,0 +1,38 @@
+name:                hs-adwords
+version:             0.1.0.0
+-- synopsis:
+-- description:
+homepage:            https://github.com/githubuser/hs-adwords#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Author name here
+maintainer:          example@example.com
+copyright:           2017 Author name here
+category:            Web
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     AdWords 
+                     , AdWords.AWQL
+                     , AdWords.Auth 
+                     , AdWords.Services 
+                     , AdWords.Services.CampaignService
+
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings DeriveGeneric
+  build-depends:       base >= 4.7 && < 5
+                     , bytestring
+                     , text
+                     , hoauth2
+                     , http-client
+                     , http-client-tls
+                     , http-types
+                     , binary
+                     , xml-conduit-writer
+                     , xml-conduit
+                     , semigroups
+                     , mtl
+                     , tagged
