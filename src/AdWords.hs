@@ -1,60 +1,134 @@
-module AdWords where
+module AdWords 
+  ( loadCreds
+  , loadToken
+  , withSaved
+  , reportAWQL
+  , reportXML
+  , name
+  , content
+  , empty
+  , request
+  -- reexports
+  , refresh
+  , credentials
+  , Credentials 
+  , exchangeCodeUrl
+  , AdWords
+  ) where
+  
 
 import AdWords.Auth 
-import AdWords.Services
 
 import qualified Data.List.NonEmpty as NE
 import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.Text as T
+import qualified Data.Map.Strict as Map
+
 import Network.OAuth.OAuth2.Internal
 import Network.OAuth.OAuth2.HttpClient
-import Data.Binary
+import Data.Binary (Binary, decodeFile, encodeFile)
+import Data.Text (Text)
+import Data.Maybe
+import Data.Map.Strict (Map)
 import Text.XML.Writer
 import Text.XML
+import Control.Monad.RWS
+import Network.HTTP.Client
+
+loadToken :: MonadIO m => FilePath -> m AccessToken
+loadToken = liftIO . decodeFile 
+
+saveToken :: MonadIO m => FilePath -> AccessToken -> m ()
+saveToken file = liftIO . encodeFile file
+
+loadCreds :: MonadIO m => FilePath -> m Credentials
+loadCreds = liftIO . decodeFile 
+
+saveCreds :: MonadIO m => FilePath -> Credentials -> m ()
+saveCreds file = liftIO . encodeFile file
+
+-- cached token path -> cached credentials path -> action -> IO (a, Text)
+withSaved :: FilePath -> FilePath -> AdWords a -> IO (a, Text)
+withSaved ftoken fcreds session = do
+  token <- loadToken ftoken
+  creds <- loadCreds fcreds
+  evalRWST session creds token
+
+type AWQL = BS.ByteString
+type Format = BS.ByteString
+
+header customerId developerToken =
+  name "RequestHeader" $ do
+    name "clientCustomerId" $ content customerId
+    name "developerToken"   $ content developerToken
+    name "userAgent"        $ content "hs-adwords"
+    name "validateOnly"     $ content "false"
+    name "partialFailure"   $ content "false"
 
 api' = Just api
 api = "https://adwords.google.com/api/adwords/cm/v201705"
 
-my_ccid = "205-650-7690"
-my_dev_token = "pqtf_Za64sgh9mOt87sPEA"
-my_clientId = "560672271820-6isihukhrj7dfpttj5crg2mrc5lu8dm3.apps.googleusercontent.com"
-my_clientSecret = "RYGhhsVyiG6QU8wKupZKktsw"
-tokenPoint = "https://www.googleapis.com/oauth2/v3/token"
-authPoint = "https://accounts.google.com/o/oauth2/auth"
-callback = "urn:ietf:wg:oauth:2.0:oob"
+name str = element (Name str api' Nothing)
+name' str = (Name str api' Nothing)
 
-my_credentials = credentials my_clientId my_clientSecret
+data Value = String Text | Object (Map Text Value) | List [Value] deriving Show
 
-callCS :: OAuth2 -> Either FilePath AccessToken -> XML -> IO (OAuth2Result BL.ByteString)
-callCS credentials mbtoken body = do
-  token <- case mbtoken of
-    Left path -> decodeFile path :: IO AccessToken
-    Right t -> return t
-      
-  let req = BL.toStrict . renderLBS def . soap (header my_ccid my_dev_token) $ body
-      csUrl = "https://adwords.google.com/api/adwords/cm/v201705/CampaignService"
-  man <- tlsManager
+rval :: Document -> Maybe (Map Text Value)
+rval (Document _ root _) = fmap goElem . listToMaybe . findBody $ root
+  where
+    findBody :: Element -> [Element]
+    findBody e@(Element (Name name _ _) _ ns) 
+      | T.isInfixOf "Body" name = [e]
+      | otherwise = concat . fmap findBody . go $ ns
 
-  res <- doPostRequest man token csUrl req
-  case res of 
-    Right rval -> return $ Right rval
-    Left err -> do
-      let Just refresh = refreshToken token
-      Right token_new <- fetchRefreshToken man my_credentials refresh
-      doPostRequest man token_new csUrl req
+    go (NodeElement el : xs) = el : go xs
+    go (_ : xs) = go xs
+    go [] = []
 
-header customerId developerToken =
-  let header = Name "RequestHeader" api' Nothing
-      ccid = Name "clientCustomerId" api' Nothing
-      devTok = Name "developerToken" api' Nothing
-      usAgent = Name "userAgent" api' Nothing
-      valOnl = Name "validateOnly" api' Nothing
-      partFail = Name "partialFailure" api' Nothing
+    goElem :: Element -> Map Text Value
+    goElem (Element (Name name _ _) _ ns) 
+      | length ns == 1 = Map.singleton name . goNode . head $ ns
+      | length ns >= 2 = Map.singleton name $ List (goNode <$> ns)
 
-   in element header . mapM_ toXML $
-        [ element ccid $ content customerId
-        , element devTok $ content developerToken
-        , element usAgent $ content "mylib"
-        , element valOnl $ content "false"
-        , element partFail $ content "false"
-        ]
+    goNode :: Node -> Value
+    goNode n = case n of 
+      NodeElement el -> Object $ goElem el
+      NodeContent val -> String val
 
+reportXML :: XML -> AdWords (Response BL.ByteString)
+reportXML body = doReportRequest url doc <* liftIO (pprint $ document (name' "reportDefinition") body) <* liftIO (BS.putStrLn doc)
+  where
+      doc = "\nParameters: "
+         <> "\n__rdxml: &lt;?xml version=\"1.0\" encoding=\"UTF-8\"?&gt;\n"
+         <> BL.toStrict (renderLBS def $ document (name' "reportDefinition") body)
+      url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
+
+
+reportAWQL :: AWQL -> Format -> AdWords (Response BL.ByteString)
+reportAWQL query format = doReportRequest url body 
+  where 
+      body = "\nParameters: "
+          <> "\n__fmt: " <> format
+          <> "\n__rdquery: " <> query
+      url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
+
+  
+request :: 
+     String 
+  -> XML 
+  -> AdWords (Response (Maybe (Map Text Value)))
+request serviceName body = do
+  token <- get
+  Credentials oauth devToken ccid _ <- ask
+
+  let soap' = soap (header ccid devToken) $ body
+      req = BL.toStrict . renderLBS (def {rsPretty = False}) $ soap'
+      csUrl = "https://adwords.google.com/api/adwords/cm/v201705/" <> serviceName
+  res <- doPostRequest csUrl req
+    
+  liftIO $ pprint soap'
+  liftIO $ print "---"
+  liftIO . pprint . parseLBS_ def . responseBody $ res
+
+  return (rval . parseLBS_ def <$> res)

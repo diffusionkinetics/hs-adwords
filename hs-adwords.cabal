@@ -16,10 +16,7 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     AdWords 
-                     , AdWords.AWQL
                      , AdWords.Auth 
-                     , AdWords.Services 
-                     , AdWords.Services.CampaignService
 
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings DeriveGeneric
@@ -33,6 +30,20 @@ library
                      , binary
                      , xml-conduit-writer
                      , xml-conduit
-                     , semigroups
                      , mtl
-                     , tagged
+                     , containers
+
+
+Test-Suite test-adwords
+  type:       exitcode-stdio-1.0
+  main-is: TestAdWords.hs
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings DeriveGeneric
+  build-depends:       base >=4.6 && <5
+                     , mtl
+                     , containers
+                     , text
+                     , bytestring
+                     , hoauth2
+                     , hs-adwords
+                     , xml-conduit-writer
