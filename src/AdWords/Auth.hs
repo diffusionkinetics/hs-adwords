@@ -1,8 +1,8 @@
 {-# LANGUAGE StandaloneDeriving #-}
 
 module AdWords.Auth 
-  ( doPostRequest
-  , doReportRequest
+  ( postRequest
+  , reportRequest
   , credentials
   , exchangeCodeUrl
   , Credentials (..)
@@ -31,11 +31,11 @@ tlsManager = newManager tlsManagerSettings
 
 type AdWords = RWST Credentials Text AccessToken IO
 
-doPostRequest :: 
+postRequest :: 
      String
   -> BS.ByteString 
   -> AdWords (Response BL.ByteString)
-doPostRequest url body = do
+postRequest url body = do
   req <- liftIO $ parseRequest url
   token <- get
   man <- liftIO tlsManager
@@ -56,11 +56,11 @@ doPostRequest url body = do
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
-doReportRequest :: 
+reportRequest :: 
      String
   -> BS.ByteString 
   -> AdWords (Response BL.ByteString)
-doReportRequest url body = do
+reportRequest url body = do
   req <- liftIO $ parseRequest url
   token <- get
   man <- liftIO tlsManager

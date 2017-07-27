@@ -26,16 +26,17 @@ test :: IO ((), Text)
 test = withSaved "token" "credentials" $ do
   refresh
   
-  {-res <- request "CampaignService" $ query "select id"-}
+  res <- request "BudgetService" $ query "select BudgetId"
 
-  res <- request "BudgetService" $ do
-    name "get" $ 
-      name "serviceSelector" $ do
-        name "fields" $ content "BudgetId"
-    {-name "mutate" $ do-}
-      {-name "operator" $ content "REMOVE"-}
-      {-name "operand" $ -}
-        {-name "name" $ content "onthenh"-}
+  {-res <- request "BudgetService" $ do-}
+    {-name "get" $ -}
+      {-name "serviceSelector" $ do-}
+        {-name "fields" $ content "BudgetId"-}
+    {-name "mutate" $ -}
+      {-name "operations" $ do-}
+        {-name "operator" $ content "ADD"-}
+        {-name "operand" $ -}
+          {-name "name" $ content "onthenh"-}
 
   {-res <- reportAWQL "select Id from AD_PERFORMANCE_REPORT" "CSV"-}
   liftIO $ print res
@@ -51,11 +52,12 @@ testReport = withSaved "token" "credentials" $ do
     name "reportType" $ content "ADGROUP_PERFORMANCE_REPORT"
     name "downLoadFormat" $ content "CSV"
 
+  {-res <- reportAWQL "select *" "CSV"-}
+
   liftIO $ print res
 
 
 main = do
-  test
-
-  {-testReport-}
+  {-test-}
+  testReport
   return ()

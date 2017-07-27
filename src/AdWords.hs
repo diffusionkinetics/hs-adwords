@@ -4,7 +4,9 @@ module AdWords
   , withSaved
   , reportAWQL
   , reportXML
+  , query
   , name
+  , element
   , content
   , empty
   , request
@@ -72,6 +74,9 @@ api = "https://adwords.google.com/api/adwords/cm/v201705"
 name str = element (Name str api' Nothing)
 name' str = (Name str api' Nothing)
 
+query :: Text -> XML
+query = name "query" . name "query" . content
+
 data Value = String Text | Object (Map Text Value) | List [Value] deriving Show
 
 rval :: Document -> Maybe (Map Text Value)
@@ -90,6 +95,7 @@ rval (Document _ root _) = fmap goElem . listToMaybe . findBody $ root
     goElem (Element (Name name _ _) _ ns) 
       | length ns == 1 = Map.singleton name . goNode . head $ ns
       | length ns >= 2 = Map.singleton name $ List (goNode <$> ns)
+      | otherwise = Map.empty
 
     goNode :: Node -> Value
     goNode n = case n of 
@@ -97,22 +103,28 @@ rval (Document _ root _) = fmap goElem . listToMaybe . findBody $ root
       NodeContent val -> String val
 
 reportXML :: XML -> AdWords (Response BL.ByteString)
-reportXML body = doReportRequest url doc <* liftIO (pprint $ document (name' "reportDefinition") body) <* liftIO (BS.putStrLn doc)
-  where
-      doc = "\nParameters: "
+reportXML body = do
+  let payload = "Parameters:"
          <> "\n__rdxml: &lt;?xml version=\"1.0\" encoding=\"UTF-8\"?&gt;\n"
-         <> BL.toStrict (renderLBS def $ document (name' "reportDefinition") body)
+         <> BL.toStrict (renderLBS (def {rsPretty = True}) doc)
       url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
+      doc = document (name' "reportDefinition") body
+
+  res <- reportRequest url payload <* liftIO (BS.putStrLn payload)
+  liftIO . pprint . parseLBS_ def . responseBody $ res
+  return res
 
 
 reportAWQL :: AWQL -> Format -> AdWords (Response BL.ByteString)
-reportAWQL query format = doReportRequest url body 
-  where 
-      body = "\nParameters: "
+reportAWQL query format = do
+  let body = "\nParameters: "
           <> "\n__fmt: " <> format
           <> "\n__rdquery: " <> query
       url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
 
+  res <- reportRequest url body 
+  liftIO . pprint . parseLBS_ def . responseBody $ res
+  return res
   
 request :: 
      String 
@@ -123,11 +135,11 @@ request serviceName body = do
   Credentials oauth devToken ccid _ <- ask
 
   let soap' = soap (header ccid devToken) $ body
-      req = BL.toStrict . renderLBS (def {rsPretty = False}) $ soap'
+      req = BL.toStrict . renderLBS (def {rsPretty = True}) $ soap'
       csUrl = "https://adwords.google.com/api/adwords/cm/v201705/" <> serviceName
-  res <- doPostRequest csUrl req
+  res <- postRequest csUrl req
     
-  liftIO $ pprint soap'
+  liftIO $ BS.putStrLn req
   liftIO $ print "---"
   liftIO . pprint . parseLBS_ def . responseBody $ res
 
