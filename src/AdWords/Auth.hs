@@ -2,7 +2,7 @@
 
 module AdWords.Auth 
   ( postRequest
-  , reportRequest
+  , reportUrlEncoded
   , credentials
   , exchangeCodeUrl
   , Credentials (..)
@@ -56,11 +56,11 @@ postRequest url body = do
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
-reportRequest :: 
+reportUrlEncoded :: 
      String
-  -> BS.ByteString 
+  -> [(BS.ByteString, BS.ByteString)]
   -> AdWords (Response BL.ByteString)
-reportRequest url body = do
+reportUrlEncoded url body = do
   req <- liftIO $ parseRequest url
   token <- get
   man <- liftIO tlsManager
@@ -68,16 +68,14 @@ reportRequest url body = do
   let headers = 
         [ (hUserAgent, "hs-adwords")
         , (hAuthorization, "Bearer " `BS.append` accessToken token)
-        , ("developerToken", BS.pack . show $ devToken)
-        , ("clientCustomerId", BS.pack . show $ ccid)
-        , ("contentType", "multipart/form-data")
+        , ("developerToken", BS.pack . T.unpack $ devToken)
+        , ("clientCustomerId", BS.pack . T.unpack $ ccid)
         ]
 
-      req' = req  { requestHeaders = headers
-                  , requestBody = RequestBodyBS body
-                  , method = "POST"
-                  }
-  liftIO $ httpLbs req' man 
+      req' = req  { requestHeaders = headers }
+
+  liftIO $ putStrLn $ show req'
+  liftIO $ httpLbs (urlEncodedBody body req') man 
 
 type ClientId = BS.ByteString
 type ClientSectret = BS.ByteString

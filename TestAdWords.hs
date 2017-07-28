@@ -45,17 +45,17 @@ testReport :: IO ((), Text)
 testReport = withSaved "token" "credentials" $ do
   refresh
 
-  res <- reportXML $ do
-    name "selector" $
-      name "fields" $ content "Name"
-    name "reportName" $ content "custom report" 
-    name "reportType" $ content "ADGROUP_PERFORMANCE_REPORT"
-    name "downLoadFormat" $ content "CSV"
+  {-res <- reportXML $ do-}
+    {-name "selector" $-}
+      {-name "fields" $ content "Name"-}
+    {-name "reportName" $ content "custom report" -}
+    {-name "reportType" $ content "CAMPAIGN_GROUP_PERFORMANCE_REPORT"-}
+    {-name "dateRangeType" $ content "LAST_7_DAYS"-}
+    {-name "downloadFormat" $ content "CSV"-}
 
-  {-res <- reportAWQL "select *" "CSV"-}
+  res <- reportAWQL "select Name from CAMPAIGN_GROUP_PERFORMANCE_REPORT" "CSV"
 
   liftIO $ print res
-
 
 main = do
   {-test-}

@@ -104,25 +104,22 @@ rval (Document _ root _) = fmap goElem . listToMaybe . findBody $ root
 
 reportXML :: XML -> AdWords (Response BL.ByteString)
 reportXML body = do
-  let payload = "Parameters:"
-         <> "\n__rdxml: &lt;?xml version=\"1.0\" encoding=\"UTF-8\"?&gt;\n"
-         <> BL.toStrict (renderLBS (def {rsPretty = True}) doc)
+  let payload = [("__rdxml", BL.toStrict (renderLBS (def {rsPretty = False}) doc))]
       url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
       doc = document (name' "reportDefinition") body
 
-  res <- reportRequest url payload <* liftIO (BS.putStrLn payload)
+  res <- reportUrlEncoded url payload
   liftIO . pprint . parseLBS_ def . responseBody $ res
   return res
 
 
 reportAWQL :: AWQL -> Format -> AdWords (Response BL.ByteString)
 reportAWQL query format = do
-  let body = "\nParameters: "
-          <> "\n__fmt: " <> format
-          <> "\n__rdquery: " <> query
+  let payload = [ ("__fmt", format) 
+                , ("__rdquery", query) ]
       url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
 
-  res <- reportRequest url body 
+  res <- reportUrlEncoded url payload 
   liftIO . pprint . parseLBS_ def . responseBody $ res
   return res
   
