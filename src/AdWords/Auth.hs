@@ -1,14 +1,16 @@
 {-# LANGUAGE StandaloneDeriving #-}
 
 module AdWords.Auth 
-  ( postRequest
-  , reportUrlEncoded
-  , credentials
-  , exchangeCodeUrl
-  , Credentials (..)
-  , refresh
-  , AdWords
-  ) where
+  {-( postRequest-}
+  {-, reportUrlEncoded-}
+  {-, credentials-}
+  {-, exchangeCodeUrl-}
+  {-, Credentials (..)-}
+  {-, refresh-}
+  {-, AdWords-}
+  {-, Customer-}
+  {-) -}
+  where
 
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
@@ -29,7 +31,7 @@ import qualified Data.Text as T
 tlsManager :: IO Manager
 tlsManager = newManager tlsManagerSettings
 
-type AdWords = RWST Credentials Text AccessToken IO
+type AdWords = RWST Credentials Text Customer IO
 
 postRequest :: 
      String
@@ -37,7 +39,7 @@ postRequest ::
   -> AdWords (Response BL.ByteString)
 postRequest url body = do
   req <- liftIO $ parseRequest url
-  token <- get
+  token <- _accessToken <$> get
   man <- liftIO tlsManager
   let headers = 
         [ (hUserAgent, "hs-adwords")
@@ -62,14 +64,15 @@ reportUrlEncoded ::
   -> AdWords (Response BL.ByteString)
 reportUrlEncoded url body = do
   req <- liftIO $ parseRequest url
-  token <- get
+  token <- _accessToken <$> get
   man <- liftIO tlsManager
-  Credentials _ devToken ccid _ <- ask 
+  devToken <- developerToken <$> ask 
+  ccid <- _clientCustomerID <$> get
   let headers = 
         [ (hUserAgent, "hs-adwords")
         , (hAuthorization, "Bearer " `BS.append` accessToken token)
-        , ("developerToken", BS.pack . T.unpack $ devToken)
-        , ("clientCustomerId", BS.pack . T.unpack $ ccid)
+        , ("developerToken", BS.pack $ T.unpack devToken)
+        , ("clientCustomerId", BS.pack $ T.unpack ccid)
         ]
 
       req' = req  { requestHeaders = headers }
@@ -80,16 +83,21 @@ reportUrlEncoded url body = do
 type ClientId = BS.ByteString
 type ClientSectret = BS.ByteString
 type DeveloperToken = Text
-type CustomerClientId = Text
+type ClientCustomerId = Text
 type ExchangeKey = BS.ByteString
+
+data Customer = Customer {
+    _clientCustomerID :: ClientCustomerId
+  , _accessToken :: AccessToken
+} deriving (Show, Generic)
 
 data Credentials = Credentials {
     oauth :: OAuth2
   , developerToken :: DeveloperToken
-  , customerClientId :: CustomerClientId
   , refreshToken' :: Maybe BS.ByteString
 } deriving (Show, Generic)
 
+instance Binary Customer
 instance Binary Credentials
 instance Binary OAuth2 
 deriving instance Generic OAuth2 
@@ -99,9 +107,9 @@ credentials :: MonadIO m =>
      ClientId 
   -> ClientSectret 
   -> DeveloperToken
-  -> CustomerClientId
+  -> ClientCustomerId
   -> ExchangeKey
-  -> m (OAuth2Result (Credentials, AccessToken))
+  -> m (OAuth2Result (Credentials, Customer))
 credentials cliendId clientSecret devToken ccid exchangeKey = liftIO $ do
   let oa = OAuth2 
         cliendId 
@@ -116,7 +124,7 @@ credentials cliendId clientSecret devToken ccid exchangeKey = liftIO $ do
   man <- tlsManager 
   res <- fetchAccessToken man oa exchangeKey
   
-  return $ fmap (\acc -> (Credentials oa devToken ccid $ refreshToken acc, acc)) res
+  return $ fmap (\acc -> (Credentials oa devToken $ refreshToken acc, Customer ccid acc)) res
 
 deriving instance Generic AccessToken
 instance Binary AccessToken
@@ -130,6 +138,7 @@ exchangeCodeUrl cId =
 refresh :: AdWords ()
 refresh = do 
   mb_refToken <- refreshToken' <$> ask
+  ccid <- _clientCustomerID <$> get
 
   case mb_refToken of
     Nothing -> tell "\nerr:no refresh token found\n"
@@ -142,4 +151,4 @@ refresh = do
         Left err -> tell $ tshow err
         Right new_token -> do
           tell " refreshed access token "
-          put new_token
+          put (Customer ccid new_token)

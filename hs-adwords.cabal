@@ -33,7 +33,6 @@ library
                      , mtl
                      , containers
 
-
 Test-Suite test-adwords
   type:       exitcode-stdio-1.0
   main-is: TestAdWords.hs
@@ -47,3 +46,4 @@ Test-Suite test-adwords
                      , hoauth2
                      , hs-adwords
                      , xml-conduit-writer
+                     , http-client

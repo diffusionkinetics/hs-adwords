@@ -1,7 +1,10 @@
 module AdWords 
   ( loadCreds
-  , loadToken
+  , loadCustomer
+  , saveCustomer
+  , saveCreds
   , withSaved
+  , withCustomer
   , reportAWQL
   , reportXML
   , query
@@ -18,7 +21,6 @@ module AdWords
   , AdWords
   ) where
   
-
 import AdWords.Auth 
 
 import qualified Data.List.NonEmpty as NE
@@ -38,11 +40,11 @@ import Text.XML
 import Control.Monad.RWS
 import Network.HTTP.Client
 
-loadToken :: MonadIO m => FilePath -> m AccessToken
-loadToken = liftIO . decodeFile 
+loadCustomer :: MonadIO m => FilePath -> m Customer
+loadCustomer = liftIO . decodeFile 
 
-saveToken :: MonadIO m => FilePath -> AccessToken -> m ()
-saveToken file = liftIO . encodeFile file
+saveCustomer :: MonadIO m => FilePath -> Customer -> m ()
+saveCustomer file = liftIO . encodeFile file
 
 loadCreds :: MonadIO m => FilePath -> m Credentials
 loadCreds = liftIO . decodeFile 
@@ -50,12 +52,25 @@ loadCreds = liftIO . decodeFile
 saveCreds :: MonadIO m => FilePath -> Credentials -> m ()
 saveCreds file = liftIO . encodeFile file
 
--- cached token path -> cached credentials path -> action -> IO (a, Text)
+saveExchanged :: OAuth2Result (Credentials, Customer) -> FilePath -> FilePath -> IO ()
+saveExchanged res fcreds fcustomer = case res of 
+  Left err -> print err
+  Right (creds, customer) -> do
+    saveCustomer fcustomer customer
+    saveCreds fcreds creds
+  
+-- cached customer path -> cached credentials path -> action -> IO (a, Text)
 withSaved :: FilePath -> FilePath -> AdWords a -> IO (a, Text)
-withSaved ftoken fcreds session = do
-  token <- loadToken ftoken
+withSaved fcustomer fcreds session = do
+  state <- loadCustomer fcustomer
   creds <- loadCreds fcreds
-  evalRWST session creds token
+  evalRWST session creds state
+
+withCustomer :: ClientCustomerId -> AdWords a -> AdWords a
+withCustomer ccid session = do
+  oldCustomer <- get
+  put (oldCustomer { _clientCustomerID = ccid })
+  session <* put oldCustomer
 
 type AWQL = BS.ByteString
 type Format = BS.ByteString
@@ -103,33 +118,27 @@ rval (Document _ root _) = fmap goElem . listToMaybe . findBody $ root
       NodeContent val -> String val
 
 reportXML :: XML -> AdWords (Response BL.ByteString)
-reportXML body = do
-  let payload = [("__rdxml", BL.toStrict (renderLBS (def {rsPretty = False}) doc))]
-      url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
-      doc = document (name' "reportDefinition") body
+reportXML body = reportUrlEncoded url payload
+  where payload = [("__rdxml", BL.toStrict (renderLBS (def {rsPretty = False}) doc))]
+        url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
+        doc = document (name' "reportDefinition") body
 
-  res <- reportUrlEncoded url payload
-  liftIO . pprint . parseLBS_ def . responseBody $ res
-  return res
 
 
 reportAWQL :: AWQL -> Format -> AdWords (Response BL.ByteString)
-reportAWQL query format = do
-  let payload = [ ("__fmt", format) 
-                , ("__rdquery", query) ]
-      url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
+reportAWQL query format = reportUrlEncoded url payload 
+  where payload = [ ("__fmt", format) 
+                  , ("__rdquery", query) ]
+        url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
 
-  res <- reportUrlEncoded url payload 
-  liftIO . pprint . parseLBS_ def . responseBody $ res
-  return res
-  
 request :: 
      String 
   -> XML 
   -> AdWords (Response (Maybe (Map Text Value)))
 request serviceName body = do
-  token <- get
-  Credentials oauth devToken ccid _ <- ask
+  token <- _accessToken <$> get
+  ccid  <- _clientCustomerID <$> get
+  Credentials oauth devToken _ <- ask
 
   let soap' = soap (header ccid devToken) $ body
       req = BL.toStrict . renderLBS (def {rsPretty = True}) $ soap'
