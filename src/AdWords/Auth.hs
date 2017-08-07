@@ -51,8 +51,6 @@ postRequest url body = do
                   , requestBody = RequestBodyBS body
                   , method = "POST"
                   }
-  liftIO $ BS.putStrLn body
-  liftIO $ print "-----"
   liftIO $ httpLbs req' man 
 
 tshow :: Show a => a -> Text
@@ -77,7 +75,6 @@ reportUrlEncoded url body = do
 
       req' = req  { requestHeaders = headers }
 
-  liftIO $ putStrLn $ show req'
   liftIO $ httpLbs (urlEncodedBody body req') man 
 
 type ClientId = BS.ByteString

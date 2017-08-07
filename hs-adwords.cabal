@@ -17,6 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     AdWords 
                      , AdWords.Auth 
+                     , AdWords.Details
 
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings DeriveGeneric
@@ -32,6 +33,8 @@ library
                      , xml-conduit
                      , mtl
                      , containers
+                     , microlens
+                     , prettyprinter
 
 Test-Suite test-adwords
   type:       exitcode-stdio-1.0

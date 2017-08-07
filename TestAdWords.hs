@@ -3,6 +3,7 @@ module Main where
 
 import AdWords
 import AdWords.Auth
+import AdWords.Details
 import Network.OAuth.OAuth2
 
 import Control.Monad.RWS
@@ -19,30 +20,39 @@ myCreds :: MonadIO m => BS.ByteString -> m (OAuth2Result (Credentials, Customer)
 myCreds = credentials 
  "560672271820-6isihukhrj7dfpttj5crg2mrc5lu8dm3.apps.googleusercontent.com"
  "RYGhhsVyiG6QU8wKupZKktsw"
- "pqtf_Za64sgh9mOt87sPEA"
+ "FvCyP0BKDLaAzIIwy3aOwA"
  "205-650-7690"
 
 printUrl = BS.putStrLn $ exchangeCodeUrl "560672271820-6isihukhrj7dfpttj5crg2mrc5lu8dm3.apps.googleusercontent.com"
 
 test :: IO ((), Text)
 test = withSaved "customer" "creds" $ do
-  refresh
-  
-  res <- request "BudgetService" $ query "select BudgetId"
+  withCustomer "415-895-2168" $ do
+    refresh
+    
+    {-res <- request "BudgetService" $ query "select BudgetId"-}
+    
+    {-res <- campaigns-}
+    {-res <- adGroups-}
+    res <- adGroupAds
+    {-res <- budgets-}
+    {-res <- campaignFeeds-}
+    {-res <- adGroupFeeds-}
+    {-res <- feeds-}
+    {-res <- campaignGroupPerformanceTarget-}
 
-  {-res <- request "BudgetService" $ do-}
-    {-name "get" $ -}
-      {-name "serviceSelector" $ do-}
-        {-name "fields" $ content "BudgetId"-}
-    {-name "mutate" $ -}
-      {-name "operations" $ do-}
-        {-name "operator" $ content "ADD"-}
-        {-name "operand" $ -}
-          {-name "name" $ content "onthenh"-}
+    {-res <- request "BudgetService" $ do-}
+      {-name "get" $ -}
+        {-name "serviceSelector" $ do-}
+          {-name "fields" $ content "BudgetId"-}
+      {-name "mutate" $ -}
+        {-name "operations" $ do-}
+          {-name "operator" $ content "ADD"-}
+          {-name "operand" $ -}
+            {-name "name" $ content "onthenh"-}
 
-  {-res <- reportAWQL "select Id from AD_PERFORMANCE_REPORT" "CSV"-}
-  liftIO $ putStrLn "-----"
-  liftIO $ print res
+    {-res <- reportAWQL "select Id from AD_PERFORMANCE_REPORT" "CSV"-}
+    liftIO $ print res
 
 testReport :: IO ((), Text)
 testReport = withSaved "customer" "creds" $ do
@@ -59,10 +69,9 @@ testReport = withSaved "customer" "creds" $ do
   {-res <- withCustomer "415-895-2168" $-}
     {-reportAWQL "select Name from CAMPAIGN_GROUP_PERFORMANCE_REPORT" "CSV"-}
 
-  liftIO $ putStrLn "-----"
   liftIO . BL.putStrLn . responseBody $ res
 
 main = do
-  {-test-}
-  testReport
+  test
+  {-testReport-}
   {-printUrl-}

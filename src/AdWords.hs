@@ -1,24 +1,7 @@
 module AdWords 
-  ( loadCreds
-  , loadCustomer
-  , saveCustomer
-  , saveCreds
-  , withSaved
-  , withCustomer
-  , reportAWQL
-  , reportXML
-  , query
-  , name
-  , element
-  , content
-  , empty
-  , request
-  -- reexports
-  , refresh
-  , credentials
-  , Credentials 
-  , exchangeCodeUrl
-  , AdWords
+  ( module AdWords.Auth
+  , module AdWords
+  , module Text.XML.Writer
   ) where
   
 import AdWords.Auth 
@@ -89,41 +72,17 @@ api = "https://adwords.google.com/api/adwords/cm/v201705"
 name str = element (Name str api' Nothing)
 name' str = (Name str api' Nothing)
 
+names :: ToXML a => Text -> [a] -> XML
+names = many . name'
+
 query :: Text -> XML
 query = name "query" . name "query" . content
-
-data Value = String Text | Object (Map Text Value) | List [Value] deriving Show
-
-rval :: Document -> Maybe (Map Text Value)
-rval (Document _ root _) = fmap goElem . listToMaybe . findBody $ root
-  where
-    findBody :: Element -> [Element]
-    findBody e@(Element (Name name _ _) _ ns) 
-      | T.isInfixOf "Body" name = [e]
-      | otherwise = concat . fmap findBody . go $ ns
-
-    go (NodeElement el : xs) = el : go xs
-    go (_ : xs) = go xs
-    go [] = []
-
-    goElem :: Element -> Map Text Value
-    goElem (Element (Name name _ _) _ ns) 
-      | length ns == 1 = Map.singleton name . goNode . head $ ns
-      | length ns >= 2 = Map.singleton name $ List (goNode <$> ns)
-      | otherwise = Map.empty
-
-    goNode :: Node -> Value
-    goNode n = case n of 
-      NodeElement el -> Object $ goElem el
-      NodeContent val -> String val
 
 reportXML :: XML -> AdWords (Response BL.ByteString)
 reportXML body = reportUrlEncoded url payload
   where payload = [("__rdxml", BL.toStrict (renderLBS (def {rsPretty = False}) doc))]
         url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
         doc = document (name' "reportDefinition") body
-
-
 
 reportAWQL :: AWQL -> Format -> AdWords (Response BL.ByteString)
 reportAWQL query format = reportUrlEncoded url payload 
@@ -134,19 +93,14 @@ reportAWQL query format = reportUrlEncoded url payload
 request :: 
      String 
   -> XML 
-  -> AdWords (Response (Maybe (Map Text Value)))
+  -> AdWords (Response Document)
 request serviceName body = do
   token <- _accessToken <$> get
   ccid  <- _clientCustomerID <$> get
   Credentials oauth devToken _ <- ask
 
   let soap' = soap (header ccid devToken) $ body
-      req = BL.toStrict . renderLBS (def {rsPretty = True}) $ soap'
+      req = BL.toStrict . renderLBS (def {rsPretty = False}) $ soap'
       csUrl = "https://adwords.google.com/api/adwords/cm/v201705/" <> serviceName
-  res <- postRequest csUrl req
-    
-  liftIO $ BS.putStrLn req
-  liftIO $ print "---"
-  liftIO . pprint . parseLBS_ def . responseBody $ res
 
-  return (rval . parseLBS_ def <$> res)
+  fmap (parseLBS_ def) <$> postRequest csUrl req
