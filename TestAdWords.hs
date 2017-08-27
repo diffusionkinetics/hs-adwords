@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import GHC.IO.Encoding
 import AdWords
 import AdWords.Auth
 import AdWords.Details
@@ -8,6 +9,7 @@ import Network.OAuth.OAuth2
 
 import Control.Monad.RWS
 
+import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Text (Text)
 import Network.HTTP.Client
@@ -25,40 +27,49 @@ myCreds = credentials
 
 printUrl = BS.putStrLn $ exchangeCodeUrl "560672271820-6isihukhrj7dfpttj5crg2mrc5lu8dm3.apps.googleusercontent.com"
 
-test :: IO ((), Text)
-test = withSaved "customer" "creds" $ do
+predefinedQueries :: IO ((), Text)
+predefinedQueries = withSaved "customer" "creds" $ do
   withCustomer "415-895-2168" $ do
     refresh
-    
-    {-res <- request "BudgetService" $ query "select BudgetId"-}
-    
-    {-res <- campaigns-}
-    {-res <- adGroups-}
-    res <- adGroupAds
-    {-res <- budgets-}
-    {-res <- campaignFeeds-}
-    {-res <- adGroupFeeds-}
-    {-res <- feeds-}
-    {-res <- campaignGroupPerformanceTarget-}
+    {-campaigns-}
+    {-adGroups-}
+    {-adGroupAds-}
+    adStats
+    {-budgets-}
+    {-campaignFeeds-}
+    {-adGroupFeeds-}
+    {-feeds-}
+    {-campaignGroupPerformanceTarget-}
+    >>= either 
+      (liftIO . print)
+      (traverse_ $ liftIO . putStrLn . show)
+    {->>= liftIO . BL.putStrLn-}
 
-    {-res <- request "BudgetService" $ do-}
-      {-name "get" $ -}
-        {-name "serviceSelector" $ do-}
-          {-name "fields" $ content "BudgetId"-}
-      {-name "mutate" $ -}
-        {-name "operations" $ do-}
-          {-name "operator" $ content "ADD"-}
-          {-name "operand" $ -}
-            {-name "name" $ content "onthenh"-}
-
-    {-res <- reportAWQL "select Id from AD_PERFORMANCE_REPORT" "CSV"-}
+testServiceCall = withSaved "customer" "creds" . 
+  withCustomer "415-895-2168" $ do
+    res <- request "BudgetService" $ do
+      name "get" $ 
+        name "serviceSelector" $ do
+          name "fields" $ content "BudgetId"
+      name "mutate" $ 
+        name "operations" $ do
+          name "operator" $ content "ADD"
+          name "operand" $ 
+            name "name" $ content "onthenh"
     liftIO $ print res
 
-testReport :: IO ((), Text)
-testReport = withSaved "customer" "creds" $ do
-  refresh
+testAwqlQuery = withSaved "customer" "creds" . 
+  withCustomer "415-895-2168" $ do
+    refresh
+    reportAWQL 
+      "select Impressions, CreativeQualityScore, Clicks, AveragePosition from KEYWORDS_PERFORMANCE_REPORT"
+      "CSV"
+    >>= liftIO . BL.putStrLn . responseBody
 
-  res <- withCustomer "415-895-2168" $ reportXML $ do
+xmlReport :: IO ((), Text)
+xmlReport = withSaved "customer" "creds" $ do
+  refresh
+  withCustomer "415-895-2168" $ reportXML $ do
     name "selector" $
       name "fields" $ content "Name"
     name "reportName" $ content "custom report" 
@@ -66,12 +77,31 @@ testReport = withSaved "customer" "creds" $ do
     name "dateRangeType" $ content "LAST_7_DAYS"
     name "downloadFormat" $ content "CSV"
 
-  {-res <- withCustomer "415-895-2168" $-}
-    {-reportAWQL "select Name from CAMPAIGN_GROUP_PERFORMANCE_REPORT" "CSV"-}
+  >>= liftIO . BL.putStrLn . responseBody
 
-  liftIO . BL.putStrLn . responseBody $ res
+clickPerformanceExample = withSaved "customer" "creds" .
+  withCustomer "415-895-2168" $ do
+    refresh
+    reportAWQL 
+      "select Clicks from ADGROUP_PERFORMANCE_REPORT" 
+      "CSV"
+
+    >>= liftIO . BL.putStrLn . responseBody
+
+awqlReport = withSaved "customer" "creds" . 
+  withCustomer "415-895-2168" $ do
+    refresh
+    reportAWQL 
+      "select AdGroupId, Clicks, AveragePosition, Impressions, AverageCost from ADGROUP_PERFORMANCE_REPORT" 
+      "CSV"
+
+    >>= liftIO . BL.putStrLn . responseBody
 
 main = do
-  test
-  {-testReport-}
+  setLocaleEncoding utf8
+  {-testAwqlQuery-}
+  {-xmlReport-}
+  {-awqlReport-}
   {-printUrl-}
+  predefinedQueries
+  {-clickPerformanceExample-}

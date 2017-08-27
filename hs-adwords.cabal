@@ -35,6 +35,9 @@ library
                      , containers
                      , microlens
                      , prettyprinter
+                     , cassava
+                     , vector
+                     , attoparsec
 
 Test-Suite test-adwords
   type:       exitcode-stdio-1.0

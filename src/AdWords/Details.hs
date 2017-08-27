@@ -1,18 +1,28 @@
+{-# LANGUAGE TupleSections, LambdaCase #-}
 module AdWords.Details 
-  ( adGroups
-  , adGroupAds
-  , adGroupFeeds
-  , budgets
-  , campaigns
-  , campaignFeeds
-  , feeds
-  , campaignGroupPerformanceTarget
-  ) where
+  {-( adGroups-}
+  {-, adGroupAds-}
+  {-, adGroupFeeds-}
+  {-, budgets-}
+  {-, campaigns-}
+  {-, campaignFeeds-}
+  {-, feeds-}
+  {-, campaignGroupPerformanceTarget-}
+  {-) -}
+  where
 
+import Debug.Trace
 import qualified Data.Text as T
 import qualified Data.Map as Map
+import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.Vector as V
+
+import Debug.Trace
+
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc hiding ((<>))
+import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
 import Data.Monoid 
 import Data.Map.Strict (Map)
 import Data.Maybe (listToMaybe)
@@ -22,14 +32,51 @@ import AdWords
 import Lens.Micro
 import Lens.Micro.Internal (foldMapOf)
 import Lens.Micro.Extras (view)
+import Control.Monad.IO.Class (liftIO)
+import Control.Applicative
 import Network.HTTP.Client (responseBody)
+import Data.Csv
+import Data.Vector (Vector)
+import GHC.Generics (Generic)
+import Data.Attoparsec.ByteString.Char8
 
-details service fields = view (to responseBody . pageDetails) <$> request service (query $ "select " <> T.intercalate ", " fields)
+data Score = Score Int | NoScore deriving (Generic, Show)
+data AdStats = Stats {
+    _id :: Identification
+  , _impressions :: Int
+  , _qualityScore :: Score
+  , _clicks :: Int
+  , _avgPosition :: Double
+  , _cost :: Double
+} deriving (Show, Generic)
 
-named name = filtered ((==) name . nameLocalName . elementName)
-elements = root . to allChildren . traverse . _NodeElement
+data Identification = 
+  Identification Int | Total deriving (Show, Generic)
 
-pageDetails = elements . named "rval" . to printEntries
+instance FromRecord AdStats
+instance FromField Identification where
+  parseField s = Identification <$> parseField s <|> pure Total
+
+instance FromRecord Score
+instance FromField Score where
+  parseField s = Score <$> parseField s <|> pure NoScore
+
+adStats :: AdWords (Either String (Vector AdStats))
+adStats = 
+  reportAWQL 
+    "select Id, Impressions, CreativeQualityScore, Clicks, AveragePosition, Cost from KEYWORDS_PERFORMANCE_REPORT"
+    "CSV"
+  <&> decode HasHeader . BL.unlines . drop 1 . BL.lines . responseBody
+
+details service fields = do
+  res <- request service (query $ "select " <> T.intercalate ", " fields)
+
+  let named name = filtered ((==) name . nameLocalName . elementName)
+      elements = root . to allChildren . traverse . _NodeElement
+
+  liftIO $ putDoc (res ^. to responseBody . elements . named "rval" . to printEntries)
+
+  return (rval <$> res)
 
 printEntries :: Element -> Doc ann
 printEntries (Element n a ns) = line <> pretty (replicate 20 '-') <> line <> vsep (go 0 <$> ns)
@@ -60,40 +107,26 @@ _Content _ t = pure t
 _Object f (Object m) = Object <$> f m
 _Object _ t = pure t
 
-data Value = Content Text | Object (Map Text Value) deriving Show
+_List f (List ls) = List <$> f ls
+_List _ t = pure t
 
-{-rval :: Document -> Value-}
-{-rval r = r ^. elements . named "entries" . to go-}
-  {-where-}
-    {-go :: Element -> Value-}
-    {-go (NodeElement (Element (Name n _ _) _ ns))-}
-      {-= Map.singletone n (go <$> ns-}
+data Value = Content Text | List [Value] | Object (Map Text Value) deriving Show
 
-    {-go (NodeContent c) = Content c-}
+rval :: Document -> [Value]
+rval r = r ^.. elements . named "entries" . to ge
+  where
+    named name = filtered ((==) name . nameLocalName . elementName)
+    elements = root . to allChildren . traverse . _NodeElement
 
-{-rval :: Element -> Maybe (Map Text Value)-}
-{-rval root = fmap goElem . listToMaybe . findBody $ root-}
-  {-where-}
-    {-findBody :: Element -> [Element]-}
-    {-findBody e@(Element (Name name _ _) _ ns) -}
-      {-| T.isInfixOf "Body" name = go ns-}
-      {-| otherwise = concat . fmap findBody . go $ ns-}
-
-    {-go :: [Node] -> [Element]-}
-    {-go (NodeElement el : xs) = el : go xs-}
-    {-go (_ : xs) = go xs-}
-    {-go [] = []-}
-
-    {-goElem :: Element -> Map Text Value-}
-    {-goElem (Element (Name name _ _) _ ns) -}
-      {-| length ns == 1 = Map.singleton name . goNode . head $ ns-}
-      {-| length ns >= 2 = Map.singleton name $ List (goNode <$> ns)-}
-      {-| otherwise = Map.empty-}
-
-    {-goNode :: Node -> Value-}
-    {-goNode n = case n of -}
-      {-NodeElement el -> Object $ goElem el-}
-      {-NodeContent val -> Content val-}
+    ge :: Element -> Value
+    ge (Element (Name n _ _) _ ns) 
+      | length ns == 1 = Object . Map.singleton n . gn . head $ ns
+      | otherwise =      Object . Map.singleton n . List $ gn <$> ns
+        
+    gn :: Node -> Value
+    gn = \case 
+      NodeElement el -> ge el
+      NodeContent c  -> Content c
 
 adGroupAds = details "AdGroupAdService" selectable
   where selectable :: [Text]
@@ -303,19 +336,23 @@ feeds = details "FeedService" selectable
           , "SystemFeedGenerationData"
           ]
 
-campaignGroupPerformanceTarget = view (to responseBody . pageDetails) <$> request "CampaignGroupPerformanceTargetService" (name "get" $ name "selector" $ names "fields" selectable)
-  where selectable :: [Text]
-        selectable = 
-          [ "CampaignGroupId"
-          , "EfficiencyTargetType"
-          , "EfficiencyTargetValue"
-          , "ForecastStatus"
-          , "HasPromotedSuggestions"
-          , "Id"
-          , "SpendTarget"
-          , "SpendTargetType"
-          , "StartDate"
-          , "EndDate"
-          , "VolumeGoalType"
-          , "VolumeTargetValue"
-          ]
+{-campaignGroupPerformanceTarget = do -}
+  {-let selectable :: [Text]-}
+      {-selectable = -}
+        {-[ "CampaignGroupId"-}
+        {-, "EfficiencyTargetType"-}
+        {-, "EfficiencyTargetValue"-}
+        {-, "ForecastStatus"-}
+        {-, "HasPromotedSuggestions"-}
+        {-, "Id"-}
+        {-, "SpendTarget"-}
+        {-, "SpendTargetType"-}
+        {-, "StartDate"-}
+        {-, "EndDate"-}
+        {-, "VolumeGoalType"-}
+        {-, "VolumeTargetValue"-}
+        {-]-}
+
+  {-res <- request "CampaignGroupPerformanceTargetService" (name "get" $ name "selector" $ names "fields" selectable)-}
+  {-liftIO . putDoc . view (to responseBody . pageDetails . to printEntities) $ res-}
+  {-return (rval <$> res)-}
