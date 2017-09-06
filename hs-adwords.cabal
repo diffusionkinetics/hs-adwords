@@ -53,3 +53,5 @@ Test-Suite test-adwords
                      , hs-adwords
                      , xml-conduit-writer
                      , http-client
+                     , microlens
+                     , prettyprinter

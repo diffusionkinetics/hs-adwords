@@ -1,48 +1,29 @@
-{-# LANGUAGE TupleSections, LambdaCase #-}
-module AdWords.Details 
-  {-( adGroups-}
-  {-, adGroupAds-}
-  {-, adGroupFeeds-}
-  {-, budgets-}
-  {-, campaigns-}
-  {-, campaignFeeds-}
-  {-, feeds-}
-  {-, campaignGroupPerformanceTarget-}
-  {-) -}
-  where
+module AdWords.Details where
 
-import Debug.Trace
 import qualified Data.Text as T
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Lazy.Char8 as BL
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.Vector as V
 
-import Debug.Trace
-
+import Network.HTTP.Client (Response)
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc hiding ((<>))
 import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
 import Data.Monoid 
 import Data.Map.Strict (Map)
-import Data.Maybe (listToMaybe)
-import Data.String (fromString)
 import Text.XML
 import AdWords 
 import Lens.Micro
 import Lens.Micro.Internal (foldMapOf)
-import Lens.Micro.Extras (view)
 import Control.Monad.IO.Class (liftIO)
-import Control.Applicative
+import Control.Applicative hiding (many)
 import Network.HTTP.Client (responseBody)
-import Data.Csv
+import Data.Csv hiding (Name)
 import Data.Vector (Vector)
 import GHC.Generics (Generic)
-import Data.Attoparsec.ByteString.Char8
 
 data Score = Score Int | NoScore deriving (Generic, Show)
 data AdStats = Stats {
-    _id :: Identification
+    _id :: IdNum
   , _impressions :: Int
   , _qualityScore :: Score
   , _clicks :: Int
@@ -50,12 +31,12 @@ data AdStats = Stats {
   , _cost :: Double
 } deriving (Show, Generic)
 
-data Identification = 
-  Identification Int | Total deriving (Show, Generic)
+data IdNum = 
+  IdNum Int | Total deriving (Show, Generic)
 
 instance FromRecord AdStats
-instance FromField Identification where
-  parseField s = Identification <$> parseField s <|> pure Total
+instance FromField IdNum where
+  parseField s = IdNum <$> parseField s <|> pure Total
 
 instance FromRecord Score
 instance FromField Score where
@@ -68,54 +49,139 @@ adStats =
     "CSV"
   <&> decode HasHeader . BL.unlines . drop 1 . BL.lines . responseBody
 
-details service fields = do
-  res <- request service (query $ "select " <> T.intercalate ", " fields)
+------
 
-  let named name = filtered ((==) name . nameLocalName . elementName)
-      elements = root . to allChildren . traverse . _NodeElement
+pauseAd :: Int -> Int -> AdWords (Response [Value])
+pauseAd adGroup_id ad_id = do
+  request "https://adwords.google.com/api/adwords/cm/v201708/AdGroupAdService" $
+    "mutate" # 
+      "operations" # do
+        "operator" ## "SET"
+        "operand" # do
+          "adGroupId" ## tshow adGroup_id
+          "ad" #
+            "id" ## tshow ad_id
+          "status" ## "PAUSED"
+  <&> fmap rval          
 
-  liftIO $ putDoc (res ^. to responseBody . elements . named "rval" . to printEntries)
+enableAd :: Int -> Int -> AdWords (Response [Value])
+enableAd adGroup_id ad_id = do
+  request "https://adwords.google.com/api/adwords/cm/v201708/AdGroupAdService" $
+    "mutate" #
+      "operations" # do
+        "operator" ## "SET"
+        "operand" # do
+          "adGroupId" ## tshow adGroup_id
+          "ad" #
+            "id" ## tshow ad_id
+          "status" ## "ENABLED"
+  <&> fmap rval
 
-  return (rval <$> res)
+changeBudget :: Int -> Int -> AdWords (Response [Value])
+changeBudget campId budgetId = do
+  request "https://adwords.google.com/api/adwords/cm/v201708/CampaignService" $
+    "mutate" # 
+      "operations" # do
+        "operator" ## "SET"
+        "operand" # do
+          "id" ## tshow campId
+          "budget" # do
+            "budgetId" ## tshow budgetId
+  <&> fmap rval
 
-printEntries :: Element -> Doc ann
-printEntries (Element n a ns) = line <> pretty (replicate 20 '-') <> line <> vsep (go 0 <$> ns)
-  where 
-    go :: Int -> Node -> Doc ann
-    go 0 (NodeElement (Element (Name n _ _) _ ns)) = pretty n <> colon <> line <+> indent 2 (align (vsep (go 1 <$> ns)))
-    go l (NodeElement (Element (Name n _ _) _ ns)) = pretty n <> colon <+> align (vsep (go (l+1) <$> ns))
-    go l (NodeContent c) = pretty c
+changeBidding :: Int -> Int -> AdWords (Response [Value])
+changeBidding campId bidId = do
+  request "https://adwords.google.com/api/adwords/cm/v201708/CampaignService" $
+    "mutate" #
+      "operations" # do
+        "operator" ## "SET"
+        "operand" # do 
+          "id" ## tshow campId
+          "biddingStrategyConfiguration" #
+            "biddingStrategyId" ## tshow bidId
+  <&> fmap rval
 
-root f (Document p r e) = f r <&> \r -> Document p r e
+addExpandedTextAd :: Int -> Text -> Text -> Text -> Text -> Text -> [Text] -> AdWords (Response [Value])
+addExpandedTextAd adGroupId hd1 hd2 desc ph1 ph2 urls = do
+  request "https://adwords.google.com/api/adwords/cm/v201708/AdGroupAdService" $
+    "mutate" #
+      "operations" # do
+        "operator" ## "ADD"
+        "operand" # do
+          "adGroupId" ## tshow adGroupId
+          "ad" #? type' "ExpandedTextAd" $ do
+            many (name "finalUrls") urls
+            "headlinePart1" ## hd1
+            "headlinePart2" ## hd2
+            "description" ## desc
+            "path1" ## ph1
+            "path2" ## ph2
+  <&> fmap rval
+
+------
+printResponse :: String -> XML -> AdWords ()
+printResponse url body =
+  request url body >>= 
+    liftIO . putDoc . vsep . map dshow . rval . responseBody
+
+details :: String -> [Text] -> AdWords (Response [Value])
+details serviceUrl fields =
+  request serviceUrl (query $ "select " <> T.intercalate ", " fields)
+  <&> fmap rval
+
+-- data Value = Content Text | List [Value] | Object (Map Text Value) deriving (Show, Eq)
+
+class DocShow thing where dshow :: thing -> Doc ann
+instance DocShow Value where
+  dshow val = line <> pretty (replicate 20 '-') <> line <> go val
+    where
+      go :: Value -> Doc ann
+      go (Content c) = pretty c
+      go (List ls) = vsep (go <$> ls)
+      go (Object obj) = obj & Map.foldrWithKey
+        (\k v doc -> pretty k <> colon <+> align (go v <> doc)) 
+        mempty
+
+root :: Lens' Document Element
+root f (Document p r e) = f r <&> \r' -> Document p r' e
 
 allChildren :: Element -> [Node]
 allChildren el = concat $ go [NodeElement el] where
   go a = a : foldMapOf (traverse . _NodeElement . _nodes) go a
 
+_nodes :: Lens' Element [Node]
 _nodes f (Element n a ns) = Element n a <$> f ns
-_name  f (Element n a ns) = f n <&> \n -> Element n a ns
 
+_name :: Lens' Element Name
+_name  f (Element n a ns) = f n <&> \n' -> Element n' a ns
+
+_NodeElement :: Traversal' Node Element
 _NodeElement f (NodeElement el) = NodeElement <$> f el
 _NodeElement _ n = pure n
 
+_NodeContent :: Traversal' Node Text
 _NodeContent f (NodeContent cnt) = NodeContent <$> f cnt
 _NodeContent _ n = pure n
 
+_Content :: Traversal' Value Text
 _Content f (Content t) = Content <$> f t
 _Content _ t = pure t
 
+_Object :: Traversal' Value (Map Text Value)
 _Object f (Object m) = Object <$> f m
 _Object _ t = pure t
 
+_List :: Traversal' Value [Value]
 _List f (List ls) = List <$> f ls
 _List _ t = pure t
 
-data Value = Content Text | List [Value] | Object (Map Text Value) deriving Show
+data Value = Content Text | List [Value] | Object (Map Text Value) deriving (Show, Eq)
 
 rval :: Document -> [Value]
+{-rval r = r ^.. root . to ge-}
 rval r = r ^.. elements . named "entries" . to ge
   where
-    named name = filtered ((==) name . nameLocalName . elementName)
+    named byname = filtered ((==) byname . nameLocalName . elementName)
     elements = root . to allChildren . traverse . _NodeElement
 
     ge :: Element -> Value
@@ -124,11 +190,93 @@ rval r = r ^.. elements . named "entries" . to ge
       | otherwise =      Object . Map.singleton n . List $ gn <$> ns
         
     gn :: Node -> Value
-    gn = \case 
+    gn n = case n of
       NodeElement el -> ge el
       NodeContent c  -> Content c
+      NodeComment _  -> Content "not supported content"
+      NodeInstruction _ -> Content "not supported content"
 
-adGroupAds = details "AdGroupAdService" selectable
+campaignCriterions :: AdWords (Response [Value])
+campaignCriterions = details "https://adwords.google.com/api/adwords/cm/v201708/CampaignCriterionService" selectable
+  where selectable :: [Text]
+        selectable =
+          [ "Address"
+          , "AgeRangeType"
+          , "AppId"
+          , "BaseCampaignId"
+          , "BidModifier"
+          , "CampaignCriterionStatus"
+          , "CampaignId"
+          , "CarrierCountryCode"
+          , "CarrierName"
+          , "ChannelId"
+          , "ChannelName"
+          , "ContentLabelType"
+          , "CriteriaType"
+          , "DayOfWeek"
+          , "DeviceType"
+          , "Dimensions"
+          , "DisplayName"
+          , "DisplayType"
+          , "EndHour"
+          , "EndMinute"
+          , "FeedId"
+          , "GenderType"
+          , "GeoPoint"
+          , "Id"
+          , "IncomeRangeType"
+          , "IpAddress"
+          , "IsNegative"
+          , "KeywordMatchType"
+          , "KeywordText"
+          , "LanguageCode"
+          , "LanguageName"
+          , "LocationName"
+          , "ManufacturerName"
+          , "MatchingFunction"
+          , "MobileAppCategoryId"
+          , "OperatingSystemName"
+          , "OperatorType"
+          , "OsMajorVersion"
+          , "OsMinorVersion"
+          , "Parameter"
+          , "ParentLocations"
+          , "ParentType"
+          , "Path"
+          , "PlacementUrl"
+          , "PlatformName"
+          , "RadiusDistanceUnits"
+          , "StartHour"
+          , "StartMinute"
+          , "TargetingStatus"
+          , "UserInterestId"
+          , "UserInterestName"
+          , "UserInterestParentId"
+          , "UserListEligibleForDisplay"
+          , "UserListEligibleForSearch"
+          , "UserListId"
+          , "UserListMembershipStatus"
+          , "UserListName"
+          , "VerticalId"
+          , "VerticalParentId"
+          , "VideoId"
+          , "VideoName"
+          ]
+
+
+biddingStrategies :: AdWords (Response [Value])
+biddingStrategies = details "https://adwords.google.com/api/adwords/cm/v201708/BiddingStrategyService" selectable
+  where selectable :: [Text]
+        selectable =
+          [ "BiddingScheme"
+          , "Id"
+          , "Name"
+          , "Status"
+          , "Type"
+          ]
+
+adGroupAds :: AdWords (Response [Value])
+adGroupAds = details "https://adwords.google.com/api/adwords/cm/v201708/AdGroupAdService" selectable
   where selectable :: [Text]
         selectable = 
           [ "AdGroupId"
@@ -207,7 +355,8 @@ adGroupAds = details "AdGroupAdService" selectable
           , "YouTubeVideoIdString"
           ]
 
-adGroupFeeds = details "AdGroupFeedService" selectable
+adGroupFeeds :: AdWords (Response [Value])
+adGroupFeeds = details "https://adwords.google.com/api/adwords/cm/v201708/AdGroupFeedService" selectable
   where selectable :: [Text]
         selectable = 
           [ "AdGroupId"
@@ -219,8 +368,8 @@ adGroupFeeds = details "AdGroupFeedService" selectable
           , "Status"
           ]
 
-
-adGroups = details "AdGroupService" selectable
+adGroups :: AdWords (Response [Value])
+adGroups = details "https://adwords.google.com/api/adwords/cm/v201708/AdGroupService" selectable
   where selectable :: [Text]
         selectable = 
           [ "AdGroupType"
@@ -250,7 +399,8 @@ adGroups = details "AdGroupService" selectable
           , "UrlCustomParameters"
           ]
 
-budgets = details "BudgetService" selectable
+budgets :: AdWords (Response [Value])
+budgets = details "https://adwords.google.com/api/adwords/cm/v201708/BudgetService" selectable
   where selectable :: [Text]
         selectable = 
           [ "Amount"
@@ -262,7 +412,8 @@ budgets = details "BudgetService" selectable
           , "IsBudgetExplicitlyShared"
           ]
 
-campaigns = details "CampaignService" selectable
+campaigns :: AdWords (Response [Value])
+campaigns = details "https://adwords.google.com/api/adwords/cm/v201708/CampaignService" selectable
   where selectable :: [Text]
         selectable =
           [ "AdServingOptimizationStatus"
@@ -313,8 +464,8 @@ campaigns = details "CampaignService" selectable
           , "UrlCustomParameters"
           ]
 
-
-campaignFeeds = details "CampaignFeedService" selectable
+campaignFeeds :: AdWords (Response [Value])
+campaignFeeds = details "https://adwords.google.com/api/adwords/cm/v201708/CampaignFeedService" selectable
   where selectable :: [Text]
         selectable = 
           [ "BaseCampaignId"
@@ -325,7 +476,8 @@ campaignFeeds = details "CampaignFeedService" selectable
           , "Status"
           ]
 
-feeds = details "FeedService" selectable
+feeds :: AdWords (Response [Value])
+feeds = details "https://adwords.google.com/api/adwords/cm/v201708/FeedService" selectable
   where selectable :: [Text]
         selectable =
           [ "Attributes"
