@@ -89,16 +89,15 @@ queries = call $ do
   {-addCampaignCriterion 920518723 $ -}
     {-Proximity (Right $ CityOnly "Bydgoszcz") KILOMETERS 20-}
 
-  {-addExpandedTextAd -}
-    {-47620349193 -}
-    {-"hd1" -}
-    {-"hd2" -}
-    {-"description" -}
-    {-"path1" -}
-    {-"path2"-}
-    {-["https://time.is"]-}
+  addExpandedTextAd 
+    47620349193 
+    "hd1" 
+    "hd2" 
+    "description" 
+    "path1" 
+    "path2"
+    ["https://time.is"]
 
-  {-adDetails 219181330005-}
   {-pauseAd 47620349193 219215737667-}
   {-enableAd 47620349193 219215737667-}
   {-changeBudget 920518723 1200785698-}
@@ -110,7 +109,8 @@ queries = call $ do
   {-campaigns-}
   {-adGroups-}
   {-adGroupAds-}
-  adDetails 219215737667
+  adDetails 219181330005
+  {-adRemove 219215737667 47620349193-}
   {-biddingStrategies-}
   {-adStats-}
   {-campaignCriterions-}
@@ -121,6 +121,7 @@ queries = call $ do
   {-campaignGroupPerformanceTarget-}
   >>= liftIO . putDoc . vsep . map dshow
   {->>= liftIO . putDoc . vsep . map dshow . responseBody-}
+  {->>= liftIO . pprint . responseBody-}
 
 serviceCall = call $ do
   refresh

@@ -198,7 +198,14 @@ addCampaignCriterion camp_id target =
                       "postalCode" ## postCode
                       "countryCode" ## countryCode
 
-------
+adRemove :: Int -> Int -> AdWords (Response Document)
+adRemove adId adGroupId = request AdGroupAdService $
+  "mutate" # "operations" # do
+    "operator" ## "REMOVE"
+    "operand" # do
+      "adGroupId" ## tshow adGroupId
+      "ad" # "id" ## tshow adId
+      
 
 adDetails :: Int -> AdWords [Value]
 adDetails = 
