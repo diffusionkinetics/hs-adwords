@@ -18,9 +18,10 @@ library
   exposed-modules:     AdWords 
                      , AdWords.Auth 
                      , AdWords.Details
+                     , AdWords.Service
 
   default-language:    Haskell2010
-  default-extensions:  OverloadedStrings DeriveGeneric
+  default-extensions:  OverloadedStrings DeriveGeneric BangPatterns
   build-depends:       base >= 4.7 && < 5
                      , bytestring
                      , text
@@ -38,6 +39,7 @@ library
                      , cassava
                      , vector
                      , attoparsec
+                     , transformers
 
 Test-Suite test-adwords
   type:       exitcode-stdio-1.0

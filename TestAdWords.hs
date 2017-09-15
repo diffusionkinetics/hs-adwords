@@ -5,6 +5,7 @@ import GHC.IO.Encoding
 import AdWords
 import AdWords.Auth
 import AdWords.Details
+import AdWords.Service
 import Network.OAuth.OAuth2
 import Control.Monad.RWS
 import Lens.Micro
@@ -37,7 +38,7 @@ printUrl = BS.putStrLn $ exchangeCodeUrl
 
 addCampaign = call $ do
   refresh
-  printResponse "https://adwords.google.com/api/adwords/cm/v201708/CampaignService" $ do
+  printResponse CampaignService $ do
     "mutate" #
       "operations" # do
         "operator" ## "ADD"
@@ -52,7 +53,7 @@ addCampaign = call $ do
 
 addBudget = call $ do
   refresh
-  printResponse "https://adwords.google.com/api/adwords/cm/v201708/BudgetService" $ do
+  printResponse BudgetService $ do
     "mutate" # 
       "operations" # do
         "operator" ## "ADD"
@@ -64,7 +65,7 @@ addBudget = call $ do
   
 addBiddingStrategy = call $ do
   refresh
-  printResponse "https://adwords.google.com/api/adwords/cm/v201708/BiddingStrategyService" $ do
+  printResponse BiddingStrategyService $ do
     "mutate" # 
       "operations" # do
         "operator" ## "ADD"
@@ -74,7 +75,7 @@ addBiddingStrategy = call $ do
 
 addAdGroup = call $ do
   refresh
-  printResponse "https://adwords.google.com/api/adwords/cm/v201708/AdGroupService" $
+  printResponse AdGroupService $
     "mutate" #
       "operations" # do
         "operator" ## "ADD"
@@ -85,6 +86,9 @@ addAdGroup = call $ do
 queries = call $ do
   refresh
 
+  {-addCampaignCriterion 920518723 $ -}
+    {-Proximity (Right $ CityOnly "Bydgoszcz") KILOMETERS 20-}
+
   {-addExpandedTextAd -}
     {-47620349193 -}
     {-"hd1" -}
@@ -94,6 +98,7 @@ queries = call $ do
     {-"path2"-}
     {-["https://time.is"]-}
 
+  {-adDetails 219181330005-}
   {-pauseAd 47620349193 219215737667-}
   {-enableAd 47620349193 219215737667-}
   {-changeBudget 920518723 1200785698-}
@@ -105,19 +110,21 @@ queries = call $ do
   {-campaigns-}
   {-adGroups-}
   {-adGroupAds-}
+  adDetails 219215737667
   {-biddingStrategies-}
   {-adStats-}
-  campaignCriterions
+  {-campaignCriterions-}
   {-budgets-}
   {-campaignFeeds-}
   {-adGroupFeeds-}
   {-feeds-}
   {-campaignGroupPerformanceTarget-}
-  >>= liftIO . putDoc . vsep . map dshow . responseBody
+  >>= liftIO . putDoc . vsep . map dshow
+  {->>= liftIO . putDoc . vsep . map dshow . responseBody-}
 
 serviceCall = call $ do
   refresh
-  printResponse "BudgetService" $ do
+  printResponse BudgetService $ do
     "get" # 
       "selector" # do
         "fields" ## "BudgetId"

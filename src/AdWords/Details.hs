@@ -1,21 +1,30 @@
+{-# language TupleSections, RankNTypes #-}
+
 module AdWords.Details where
 
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Lazy.Char8 as BL
 
+import AdWords 
+import AdWords.Service
+
 import Network.HTTP.Client (Response)
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc hiding ((<>))
 import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
 import Data.Monoid 
+import Data.Maybe (catMaybes)
 import Data.Map.Strict (Map)
 import Text.XML
-import AdWords 
 import Lens.Micro
+import Lens.Micro.Extras (view)
 import Lens.Micro.Internal (foldMapOf)
+import Control.Monad
 import Control.Monad.IO.Class (liftIO)
-import Control.Applicative hiding (many)
+import Control.Monad.Writer.Lazy
+import Control.Monad.Trans.Maybe
+import Control.Applicative hiding (empty, many)
 import Network.HTTP.Client (responseBody)
 import Data.Csv hiding (Name)
 import Data.Vector (Vector)
@@ -53,7 +62,7 @@ adStats =
 
 pauseAd :: Int -> Int -> AdWords (Response [Value])
 pauseAd adGroup_id ad_id = do
-  request "https://adwords.google.com/api/adwords/cm/v201708/AdGroupAdService" $
+  request AdGroupAdService $
     "mutate" # 
       "operations" # do
         "operator" ## "SET"
@@ -66,7 +75,7 @@ pauseAd adGroup_id ad_id = do
 
 enableAd :: Int -> Int -> AdWords (Response [Value])
 enableAd adGroup_id ad_id = do
-  request "https://adwords.google.com/api/adwords/cm/v201708/AdGroupAdService" $
+  request AdGroupAdService $
     "mutate" #
       "operations" # do
         "operator" ## "SET"
@@ -79,7 +88,7 @@ enableAd adGroup_id ad_id = do
 
 changeBudget :: Int -> Int -> AdWords (Response [Value])
 changeBudget campId budgetId = do
-  request "https://adwords.google.com/api/adwords/cm/v201708/CampaignService" $
+  request CampaignService $
     "mutate" # 
       "operations" # do
         "operator" ## "SET"
@@ -91,7 +100,7 @@ changeBudget campId budgetId = do
 
 changeBidding :: Int -> Int -> AdWords (Response [Value])
 changeBidding campId bidId = do
-  request "https://adwords.google.com/api/adwords/cm/v201708/CampaignService" $
+  request CampaignService $
     "mutate" #
       "operations" # do
         "operator" ## "SET"
@@ -101,9 +110,17 @@ changeBidding campId bidId = do
             "biddingStrategyId" ## tshow bidId
   <&> fmap rval
 
-addExpandedTextAd :: Int -> Text -> Text -> Text -> Text -> Text -> [Text] -> AdWords (Response [Value])
+addExpandedTextAd :: 
+     Int    -- ad goup id
+  -> Text   -- headlinePart1
+  -> Text   -- headlinePart2
+  -> Text   -- description
+  -> Text   -- path1 
+  -> Text   -- path2
+  -> [Text] -- finalUrls
+  -> AdWords (Response [Value])
 addExpandedTextAd adGroupId hd1 hd2 desc ph1 ph2 urls = do
-  request "https://adwords.google.com/api/adwords/cm/v201708/AdGroupAdService" $
+  request AdGroupAdService $
     "mutate" #
       "operations" # do
         "operator" ## "ADD"
@@ -119,17 +136,121 @@ addExpandedTextAd adGroupId hd1 hd2 desc ph1 ph2 urls = do
   <&> fmap rval
 
 ------
-printResponse :: String -> XML -> AdWords ()
-printResponse url body =
-  request url body >>= 
+
+type Latitude = Double   -- latitude micro degrees
+type Longtitude = Double -- longtitude micro degrees
+type GeoPoint = Either (Latitude, Longtitude) Address
+type Radius = Double
+
+data DistanceUnits = KILOMETERS | MILES deriving Show
+data Address =  -- this mustn't contain empty strings
+    CityOnly Text
+  | FullAddr 
+      Text -- streetAddress
+      Text -- streetAddress2
+      Text -- cityName
+      Text -- provinceCode 
+      Text -- provinceName
+      Text -- postalCode
+      Text -- countryCode
+
+data GeoTarget = 
+    Location Text -- location name
+  | Proximity GeoPoint DistanceUnits Radius
+
+addCampaignCriterion :: 
+     Int 
+  -> GeoTarget 
+  -> AdWords (Response [Value])
+addCampaignCriterion camp_id target = 
+  mapped . mapped %~ rval $ request CampaignCriterionService $ do
+    "mutate" # "operations" # do
+      "operator" ## "ADD"
+      "operand" # do
+        "campaignId" ## tshow camp_id
+        case target of
+          Location locationName -> 
+            "criterion" #? type' "Location" $ 
+              "locationName" ## locationName
+          Proximity point distanceUnits radius -> 
+            let radiusSetting = "radiusDistanceUnits" ## tshow distanceUnits
+                                   *> "radiusInUnits" ## tshow radius
+            in "criterion" #? type' "Proximity" $
+              case point of
+                Left (lat, lon) -> 
+                  "geoPoint" # do
+                    "latitudeInMicroDegrees" ## tshow lat
+                    "longtitudeInMicroDegrees" ## tshow lon
+                  *> radiusSetting
+
+                Right addr -> do
+                  radiusSetting
+                  "address" # case addr of
+                    CityOnly city ->
+                      "cityName" ## city
+
+                    FullAddr str1 str2 city provCode provName postCode countryCode -> do
+                      "streetName" ## str1
+                      "streetNmae2" ## str2
+                      "cityName" ## city
+                      "provinceCode" ## provCode
+                      "provinceName" ## provName
+                      "postalCode" ## postCode
+                      "countryCode" ## countryCode
+
+------
+
+adDetails :: Int -> AdWords [Value]
+adDetails = 
+  let askAd :: Int -> MaybeT (WriterT [Value] AdWords) [Value]
+      askAd adId = ask AdGroupAdService . query $
+        "select HeadlinePart1, HeadlinePart2, Id, Description, Path1, Path2, AdGroupId, CreativeFinalUrls where Id = " <> tshow adId
+
+      ask :: Service -> XML -> MaybeT (WriterT [Value] AdWords) [Value]
+      ask serv = MaybeT . WriterT . fmap ((\x -> (pure x, x)) . rval . responseBody) . request serv
+
+      find :: Text -> [Value] -> MaybeT (WriterT [Value] AdWords) Text
+      find txt = MaybeT . pure . fmap (view _Content) . Map.lookup txt . Map.unions . foldMap allObjects
+
+      finds :: [Text] -> [Value] -> [Value]
+      finds txts = catMaybes . (Map.lookup <$> txts <*>) . pure . Map.unions . foldMap allObjects
+
+      askGroup :: Text -> MaybeT (WriterT [Value] AdWords) [Value]
+      askGroup groupId = ask AdGroupService . query $ 
+        "select BiddingStrategyId, CampaignId, Id where Id = " <> groupId
+
+      askCriterion :: Text -> MaybeT (WriterT [Value] AdWords) [Value]
+      askCriterion campId = ask CampaignCriterionService . query $ 
+        "select Address, RadiusDistanceUnits, RadiusInUnits, CampaignId where CampaignId = " <> campId
+
+      relevantFields :: [Text]
+      relevantFields = 
+        [ "headlinePart1"
+        , "headlinePart2"
+        , "description"
+        , "finalUrls"
+        , "geoPoint" 
+        , "address"
+        , "radiusInUnits"
+        , "radiusDistanceUnits"
+        ]
+
+      aboutAd :: Int -> MaybeT (WriterT [Value] AdWords) [Value]
+      aboutAd = askCriterion <=< find "campaignId" <=< askGroup <=< find "adGroupId" <=< askAd
+
+   in fmap (finds relevantFields) . execWriterT . runMaybeT . aboutAd
+     
+------
+
+printResponse :: Service -> XML -> AdWords ()
+printResponse serv body =
+  request serv body >>= 
     liftIO . putDoc . vsep . map dshow . rval . responseBody
 
-details :: String -> [Text] -> AdWords (Response [Value])
-details serviceUrl fields =
-  request serviceUrl (query $ "select " <> T.intercalate ", " fields)
+details :: Service -> [Text] -> AdWords (Response [Value])
+details serv fields =
+  request serv (query $ "select " <> T.intercalate ", " fields)
   <&> fmap rval
-
--- data Value = Content Text | List [Value] | Object (Map Text Value) deriving (Show, Eq)
 
 class DocShow thing where dshow :: thing -> Doc ann
 instance DocShow Value where
@@ -149,6 +270,14 @@ allChildren :: Element -> [Node]
 allChildren el = concat $ go [NodeElement el] where
   go a = a : foldMapOf (traverse . _NodeElement . _nodes) go a
 
+allObjects :: Value -> [Map Text Value]
+allObjects val = concat $ go [val] where
+  go :: [Value] -> [[Map Text Value]]
+  go vs = objs : foldMap go (objs' <> lists) where
+    lists = vs ^.. traverse . _List
+    objs  = vs ^.. traverse . _Object
+    objs' = vs ^.. traverse . _Object . to (map snd . Map.toList)
+
 _nodes :: Lens' Element [Node]
 _nodes f (Element n a ns) = Element n a <$> f ns
 
@@ -161,7 +290,7 @@ _NodeElement _ n = pure n
 
 _NodeContent :: Traversal' Node Text
 _NodeContent f (NodeContent cnt) = NodeContent <$> f cnt
-_NodeContent _ n = pure n
+_NodeContent _ t = pure t
 
 _Content :: Traversal' Value Text
 _Content f (Content t) = Content <$> f t
@@ -177,11 +306,13 @@ _List _ t = pure t
 
 data Value = Content Text | List [Value] | Object (Map Text Value) deriving (Show, Eq)
 
+named :: Text -> Traversal' Element Element
+named byname = filtered ((==) byname . nameLocalName . elementName)
+
 rval :: Document -> [Value]
-{-rval r = r ^.. root . to ge-}
 rval r = r ^.. elements . named "entries" . to ge
+{-rval r = r ^.. root . to ge-}
   where
-    named byname = filtered ((==) byname . nameLocalName . elementName)
     elements = root . to allChildren . traverse . _NodeElement
 
     ge :: Element -> Value
@@ -197,7 +328,7 @@ rval r = r ^.. elements . named "entries" . to ge
       NodeInstruction _ -> Content "not supported content"
 
 campaignCriterions :: AdWords (Response [Value])
-campaignCriterions = details "https://adwords.google.com/api/adwords/cm/v201708/CampaignCriterionService" selectable
+campaignCriterions = details CampaignCriterionService selectable
   where selectable :: [Text]
         selectable =
           [ "Address"
@@ -263,9 +394,8 @@ campaignCriterions = details "https://adwords.google.com/api/adwords/cm/v201708/
           , "VideoName"
           ]
 
-
 biddingStrategies :: AdWords (Response [Value])
-biddingStrategies = details "https://adwords.google.com/api/adwords/cm/v201708/BiddingStrategyService" selectable
+biddingStrategies = details BiddingStrategyService selectable
   where selectable :: [Text]
         selectable =
           [ "BiddingScheme"
@@ -276,7 +406,7 @@ biddingStrategies = details "https://adwords.google.com/api/adwords/cm/v201708/B
           ]
 
 adGroupAds :: AdWords (Response [Value])
-adGroupAds = details "https://adwords.google.com/api/adwords/cm/v201708/AdGroupAdService" selectable
+adGroupAds = details AdGroupAdService selectable
   where selectable :: [Text]
         selectable = 
           [ "AdGroupId"
@@ -356,7 +486,7 @@ adGroupAds = details "https://adwords.google.com/api/adwords/cm/v201708/AdGroupA
           ]
 
 adGroupFeeds :: AdWords (Response [Value])
-adGroupFeeds = details "https://adwords.google.com/api/adwords/cm/v201708/AdGroupFeedService" selectable
+adGroupFeeds = details AdGroupFeedService selectable
   where selectable :: [Text]
         selectable = 
           [ "AdGroupId"
@@ -369,7 +499,7 @@ adGroupFeeds = details "https://adwords.google.com/api/adwords/cm/v201708/AdGrou
           ]
 
 adGroups :: AdWords (Response [Value])
-adGroups = details "https://adwords.google.com/api/adwords/cm/v201708/AdGroupService" selectable
+adGroups = details AdGroupService selectable
   where selectable :: [Text]
         selectable = 
           [ "AdGroupType"
@@ -400,7 +530,7 @@ adGroups = details "https://adwords.google.com/api/adwords/cm/v201708/AdGroupSer
           ]
 
 budgets :: AdWords (Response [Value])
-budgets = details "https://adwords.google.com/api/adwords/cm/v201708/BudgetService" selectable
+budgets = details BudgetService selectable
   where selectable :: [Text]
         selectable = 
           [ "Amount"
@@ -413,7 +543,7 @@ budgets = details "https://adwords.google.com/api/adwords/cm/v201708/BudgetServi
           ]
 
 campaigns :: AdWords (Response [Value])
-campaigns = details "https://adwords.google.com/api/adwords/cm/v201708/CampaignService" selectable
+campaigns = details CampaignService selectable
   where selectable :: [Text]
         selectable =
           [ "AdServingOptimizationStatus"
@@ -465,7 +595,7 @@ campaigns = details "https://adwords.google.com/api/adwords/cm/v201708/CampaignS
           ]
 
 campaignFeeds :: AdWords (Response [Value])
-campaignFeeds = details "https://adwords.google.com/api/adwords/cm/v201708/CampaignFeedService" selectable
+campaignFeeds = details CampaignFeedService selectable
   where selectable :: [Text]
         selectable = 
           [ "BaseCampaignId"
@@ -477,7 +607,7 @@ campaignFeeds = details "https://adwords.google.com/api/adwords/cm/v201708/Campa
           ]
 
 feeds :: AdWords (Response [Value])
-feeds = details "https://adwords.google.com/api/adwords/cm/v201708/FeedService" selectable
+feeds = details FeedService selectable
   where selectable :: [Text]
         selectable =
           [ "Attributes"

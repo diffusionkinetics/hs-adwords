@@ -5,6 +5,7 @@ module AdWords
   ) where
   
 import AdWords.Auth 
+import AdWords.Service
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as BS
@@ -71,7 +72,7 @@ type' :: Text -> [(Name, Text)]
 type' t = [(Name "xsi:type" Nothing Nothing, t)]
 
 name :: Text -> Name
-name str = (Name str api' Nothing)
+name str = Name ("ns:" <> str) Nothing Nothing
 
 (#) :: Text -> XML -> XML
 a # b = element (Name a api' Nothing) b
@@ -104,21 +105,21 @@ reportAWQL queryString format = reportUrlEncoded url payload
         url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
 
 request :: 
-     String 
+     Service
   -> XML 
   -> AdWords (Response Document)
-request serviceUrl body = do
-  {-token <- _accessToken <$> get-}
+request service body = do
   ccid  <- _clientCustomerID <$> get
   Credentials _ devToken _ <- ask
 
   let soap' = soap (header ccid devToken) $ body
       req = BL.toStrict . renderLBS settings $ soap'
       settings = def { 
-          rsPretty = False 
-        , rsNamespaces = [ ("xsi", "http://www.w3.org/2001/XMLSchema-instance") ]
+          rsPretty = False
+        , rsNamespaces = 
+            [ ("xsi", "http://www.w3.org/2001/XMLSchema-instance") 
+            , ("ns", nameSpace service)
+            ]
         }
 
-  {-liftIO . BS.putStrLn $ req-}
-
-  fmap (parseLBS_ def) <$> postRequest serviceUrl req
+  fmap (parseLBS_ def) <$> postRequest (serviceUrl service) req
