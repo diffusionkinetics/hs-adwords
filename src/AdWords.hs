@@ -18,31 +18,31 @@ import Text.XML
 import Control.Monad.RWS
 import Network.HTTP.Client (Response(..))
 
-loadCustomer :: MonadIO m => FilePath -> m Customer
-loadCustomer = liftIO . decodeFile 
-
-saveCustomer :: MonadIO m => FilePath -> Customer -> m ()
-saveCustomer file = liftIO . encodeFile file
-
-loadCreds :: MonadIO m => FilePath -> m Credentials
-loadCreds = liftIO . decodeFile 
-
-saveCreds :: MonadIO m => FilePath -> Credentials -> m ()
-saveCreds file = liftIO . encodeFile file
-
-saveExchanged :: OAuth2Result (Credentials, Customer) -> FilePath -> FilePath -> IO ()
-saveExchanged res fcreds fcustomer = case res of 
-  Left err -> print err
-  Right (creds, customer) -> do
-    saveCustomer fcustomer customer
-    saveCreds fcreds creds
-  
--- cached customer path -> cached credentials path -> action -> IO (a, Text)
-withSaved :: FilePath -> FilePath -> AdWords a -> IO (a, Text)
-withSaved fcustomer fcreds session = do
-  customer <- loadCustomer fcustomer
-  creds <- loadCreds fcreds
-  evalRWST session creds customer
+-- loadCustomer :: MonadIO m => FilePath -> m Customer
+-- loadCustomer = liftIO . decodeFile 
+-- 
+-- saveCustomer :: MonadIO m => FilePath -> Customer -> m ()
+-- saveCustomer file = liftIO . encodeFile file
+-- 
+-- loadCreds :: MonadIO m => FilePath -> m Credentials
+-- loadCreds = liftIO . decodeFile 
+-- 
+-- saveCreds :: MonadIO m => FilePath -> Credentials -> m ()
+-- saveCreds file = liftIO . encodeFile file
+-- 
+-- saveExchanged :: OAuth2Result (Credentials, Customer) -> FilePath -> FilePath -> IO ()
+-- saveExchanged res fcreds fcustomer = case res of 
+--   Left err -> print err
+--   Right (creds, customer) -> do
+--     saveCustomer fcustomer customer
+--     saveCreds fcreds creds
+--   
+-- -- cached customer path -> cached credentials path -> action -> IO (a, Text)
+-- withSaved :: FilePath -> FilePath -> AdWords a -> IO (a, Text)
+-- withSaved fcustomer fcreds session = do
+--   customer <- loadCustomer fcustomer
+--   creds <- loadCreds fcreds
+--   evalRWST session creds customer
 
 withCustomer :: ClientCustomerId -> AdWords a -> AdWords a
 withCustomer ccid session = do

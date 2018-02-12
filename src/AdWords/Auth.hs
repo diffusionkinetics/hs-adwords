@@ -13,20 +13,24 @@ module AdWords.Auth
   where
 
 import Data.Binary (Binary)
+import URI.ByteString
 import GHC.Generics (Generic)
+import Blaze.ByteString.Builder
 
 import Network.OAuth.OAuth2
-import Network.OAuth.OAuth2
 import Network.OAuth.OAuth2.TokenRequest (Errors(..))
-import Network.HTTP.Client.TLS
+import Network.HTTP.Client.TLS 
 import Network.HTTP.Client
 import Network.HTTP.Types.Header
 import Data.Text (Text)
-import Data.Monoid
-import Control.Monad.RWS
+import Data.String (fromString)
+import Data.Monoid ((<>))
+import Control.Monad.RWS 
+import Lens.Micro ((<&>))
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.Binary as BI
 import qualified Data.Text as T
 
 tlsManager :: IO Manager
@@ -44,7 +48,7 @@ postRequest url body = do
   man <- liftIO tlsManager
   let headers =
         [ (hUserAgent, "hs-adwords")
-        , (hAuthorization, "Bearer " `BS.append` accessToken token)
+        , (hAuthorization, "Bearer " <> text2bs (atoken token))
         , (hContentType, "application/soap+xml")
         ]
 
@@ -57,6 +61,12 @@ postRequest url body = do
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
+text2bs :: Text -> BS.ByteString
+text2bs = BS.pack . T.unpack 
+
+bs2text :: BS.ByteString -> Text
+bs2text = T.pack . BS.unpack
+
 reportUrlEncoded ::
      String
   -> [(BS.ByteString, BS.ByteString)]
@@ -65,11 +75,11 @@ reportUrlEncoded url body = do
   req <- liftIO $ parseRequest url
   token <- _accessToken <$> get
   man <- liftIO tlsManager
-  devToken <- developerToken <$> ask
+  devToken <- _developerToken <$> ask
   ccid <- _clientCustomerID <$> get
   let headers =
         [ (hUserAgent, "hs-adwords")
-        , (hAuthorization, "Bearer " `BS.append` accessToken token)
+        , (hAuthorization, "Bearer " <> text2bs (atoken token))
         , ("developerToken", BS.pack $ T.unpack devToken)
         , ("clientCustomerId", BS.pack $ T.unpack ccid)
         ]
@@ -78,8 +88,8 @@ reportUrlEncoded url body = do
 
   liftIO $ httpLbs (urlEncodedBody body req') man
 
-type ClientId = BS.ByteString
-type ClientSectret = BS.ByteString
+type ClientId = Text
+type ClientSectret = Text
 type DeveloperToken = Text
 type ClientCustomerId = Text
 type ExchangeKey = BS.ByteString
@@ -90,15 +100,10 @@ data Customer = Customer {
 } deriving (Show, Generic)
 
 data Credentials = Credentials {
-    oauth :: OAuth2
-  , developerToken :: DeveloperToken
-  , refreshToken' :: Maybe BS.ByteString
+    _oauth :: OAuth2
+  , _developerToken :: DeveloperToken
+  , _refreshToken' :: RefreshToken
 } deriving (Show, Generic)
-
-instance Binary Customer
-instance Binary Credentials
-instance Binary OAuth2
-deriving instance Generic OAuth2
 
 -- refresh token is given only on first key exchange
 credentials :: MonadIO m =>
@@ -106,26 +111,51 @@ credentials :: MonadIO m =>
   -> ClientSectret
   -> DeveloperToken
   -> ClientCustomerId
-  -> ExchangeKey
+  -> ExchangeToken
   -> m (OAuth2Result Errors (Credentials, Customer))
-credentials cliendId clientSecret devToken ccid exchangeKey = liftIO $ do
-  let oa = OAuth2
-        cliendId
-        clientSecret
-        authorizeEndpoint
-        accessTokenEntpoint
-        (Just callback)
-      accessTokenEntpoint = "https://www.googleapis.com/oauth2/v3/token"
-      authorizeEndpoint = "https://accounts.google.com/o/oauth2/auth"
-      callback = "urn:ietf:wg:oauth:2.0:oob"
+credentials cliendId clientSecret devToken ccid xchanget = liftIO $ go
+  where 
+    oa = OAuth2
+            cliendId
+            clientSecret
+            authorizeEndpoint
+            accessTokenEntpoint
+            callback
+    accessTokenEntpoint = URI
+      (Scheme "https")
+      (Just $ Authority Nothing (Host "www.googleapis.com") Nothing)
+      "/oauth2/v3/token"
+      (Query [])
+      Nothing
+    authorizeEndpoint = URI 
+      (Scheme "https")
+      (Just $ Authority Nothing (Host "accounts.google.com") Nothing)
+      "/o/oauth2/auth"
+      (Query [])
+      Nothing 
+    callback = Nothing
+      -- Just "urn:ietf:wg:oauth:2.0:oob"
 
-  man <- tlsManager
-  res <- fetchAccessToken man oa exchangeKey
+    getRefreshToken :: OAuth2Result Errors OAuth2Token -> OAuth2Result Errors RefreshToken
+    getRefreshToken (Right (OAuth2Token _ mbreft _ _ _)) = case mbreft of
+      Just reftoken -> Right reftoken
+      Nothing -> Left $ OAuth2Error 
+        (Left "no RefreshToken received") 
+        (Just "no RefreshToken received")
+        Nothing
 
-  return $ fmap (\acc -> (Credentials oa devToken $ refreshToken acc, Customer ccid acc)) res
+    go = do 
+      man <- tlsManager 
+      res <- fetchAccessToken man oa xchanget
+      return $ (,) 
+          <$> (Credentials oa devToken <$> getRefreshToken res)
+          <*> (Customer ccid . accessToken <$> res)
+
 
 deriving instance Generic AccessToken
+deriving instance Generic RefreshToken
 instance Binary AccessToken
+instance Binary RefreshToken
 
 exchangeCodeUrl :: BS.ByteString -> BS.ByteString
 exchangeCodeUrl cId =
@@ -135,18 +165,12 @@ exchangeCodeUrl cId =
 
 refresh :: AdWords ()
 refresh = do
-  mb_refToken <- refreshToken' <$> ask
   ccid <- _clientCustomerID <$> get
+  Credentials creds _ refToken <- ask
 
-  case mb_refToken of
-    Nothing -> tell "\nerr:no refresh token found\n"
-    Just refToken -> do
-      creds <- oauth <$> ask
-      man <- liftIO tlsManager
-      mb_new_token <- liftIO $ fetchRefreshToken man creds refToken
+  man <- liftIO tlsManager
 
-      case mb_new_token of
-        Left err -> tell $ tshow err
-        Right new_token -> do
-          tell " refreshed access token "
-          put (Customer ccid new_token)
+  liftIO (fetchRefreshToken man creds refToken) >>=
+    either
+      (tell . tshow)
+      (put . Customer ccid . accessToken)

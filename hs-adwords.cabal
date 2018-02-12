@@ -24,6 +24,8 @@ library
   default-extensions:  OverloadedStrings DeriveGeneric BangPatterns
   build-depends:       base >= 4.7 && < 5
                      , bytestring
+                     , uri-bytestring
+                     , blaze-builder
                      , text
                      , hoauth2
                      , http-client
