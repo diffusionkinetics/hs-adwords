@@ -16,6 +16,7 @@ import Data.Binary (Binary)
 import URI.ByteString
 import GHC.Generics (Generic)
 import Blaze.ByteString.Builder
+import Data.Function (on)
 
 import Network.OAuth.OAuth2
 import Network.OAuth.OAuth2.TokenRequest (Errors(..))
@@ -103,7 +104,8 @@ data Credentials = Credentials {
     _oauth :: OAuth2
   , _developerToken :: DeveloperToken
   , _refreshToken' :: RefreshToken
-} deriving (Show, Generic)
+} deriving (Show)
+
 
 -- refresh token is given only on first key exchange
 credentials :: MonadIO m =>
@@ -121,21 +123,6 @@ credentials cliendId clientSecret devToken ccid xchanget = liftIO $ go
             authorizeEndpoint
             accessTokenEntpoint
             callback
-    accessTokenEntpoint = URI
-      (Scheme "https")
-      (Just $ Authority Nothing (Host "www.googleapis.com") Nothing)
-      "/oauth2/v3/token"
-      (Query [])
-      Nothing
-    authorizeEndpoint = URI 
-      (Scheme "https")
-      (Just $ Authority Nothing (Host "accounts.google.com") Nothing)
-      "/o/oauth2/auth"
-      (Query [])
-      Nothing 
-    callback = Nothing
-      -- Just "urn:ietf:wg:oauth:2.0:oob"
-
     getRefreshToken :: OAuth2Result Errors OAuth2Token -> OAuth2Result Errors RefreshToken
     getRefreshToken (Right (OAuth2Token _ mbreft _ _ _)) = case mbreft of
       Just reftoken -> Right reftoken
@@ -151,6 +138,34 @@ credentials cliendId clientSecret devToken ccid xchanget = liftIO $ go
           <$> (Credentials oa devToken <$> getRefreshToken res)
           <*> (Customer ccid . accessToken <$> res)
 
+instance Binary OAuth2 where
+  put (OAuth2 cid cs _ _ _) = ((*>) `on` BI.put) cid cs
+  get = OAuth2 
+    <$> BI.get
+    <*> BI.get
+    <*> pure authorizeEndpoint
+    <*> pure accessTokenEntpoint
+    <*> pure callback
+
+accessTokenEntpoint :: URI
+accessTokenEntpoint = URI
+  (Scheme "https")
+  (Just $ Authority Nothing (Host "www.googleapis.com") Nothing)
+  "/oauth2/v3/token"
+  (Query [])
+  Nothing
+
+authorizeEndpoint :: URI
+authorizeEndpoint = URI 
+  (Scheme "https")
+  (Just $ Authority Nothing (Host "accounts.google.com") Nothing)
+  "/o/oauth2/auth"
+  (Query [])
+  Nothing 
+
+callback :: Maybe URI
+callback = Nothing
+  -- Just "urn:ietf:wg:oauth:2.0:oob"
 
 deriving instance Generic AccessToken
 deriving instance Generic RefreshToken
