@@ -30,7 +30,8 @@ loadCreds = liftIO . decodeFile
 saveCreds :: MonadIO m => FilePath -> Credentials -> m ()
 saveCreds file = liftIO . encodeFile file
 
-saveExchanged :: OAuth2Result (Credentials, Customer) -> FilePath -> FilePath -> IO ()
+saveExchanged :: Show e => 
+  OAuth2Result e (Credentials, Customer) -> FilePath -> FilePath -> IO ()
 saveExchanged res fcreds fcustomer = case res of 
   Left err -> print err
   Right (creds, customer) -> do

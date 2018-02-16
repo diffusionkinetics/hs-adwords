@@ -104,8 +104,14 @@ data Credentials = Credentials {
     _oauth :: OAuth2
   , _developerToken :: DeveloperToken
   , _refreshToken' :: RefreshToken
-} deriving (Show)
+} deriving (Show, Generic)
 
+deriving instance Generic AccessToken
+deriving instance Generic RefreshToken
+instance Binary AccessToken
+instance Binary RefreshToken
+instance Binary Credentials
+instance Binary Customer
 
 -- refresh token is given only on first key exchange
 credentials :: MonadIO m =>
@@ -166,11 +172,6 @@ authorizeEndpoint = URI
 callback :: Maybe URI
 callback = Nothing
   -- Just "urn:ietf:wg:oauth:2.0:oob"
-
-deriving instance Generic AccessToken
-deriving instance Generic RefreshToken
-instance Binary AccessToken
-instance Binary RefreshToken
 
 exchangeCodeUrl :: BS.ByteString -> BS.ByteString
 exchangeCodeUrl cId =
