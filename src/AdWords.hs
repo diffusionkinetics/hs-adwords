@@ -6,6 +6,7 @@ module AdWords
   
 import AdWords.Auth 
 import AdWords.Service
+import AdWords.Types
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as BS
@@ -31,8 +32,8 @@ saveCreds :: MonadIO m => FilePath -> Credentials -> m ()
 saveCreds file = liftIO . encodeFile file
 
 saveExchanged :: Show e => 
-  OAuth2Result e (Credentials, Customer) -> FilePath -> FilePath -> IO ()
-saveExchanged res fcreds fcustomer = case res of 
+   FilePath -> FilePath -> OAuth2Result e (Credentials, Customer) -> IO ()
+saveExchanged fcreds fcustomer res = case res of 
   Left err -> print err
   Right (creds, customer) -> do
     saveCustomer fcustomer customer

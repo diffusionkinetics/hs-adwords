@@ -3,9 +3,11 @@ module Main where
 
 import GHC.IO.Encoding
 import AdWords
-import AdWords.Auth
+import AdWords.Types
 import AdWords.Details
 import AdWords.Service
+import AdWords.Auth
+import AdWords.Auth.Server 
 import Network.OAuth.OAuth2
 import Control.Monad.RWS
 import Lens.Micro
@@ -13,6 +15,7 @@ import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Text (Text)
 import Network.HTTP.Client
+import Network.OAuth.OAuth2.TokenRequest (Errors)
 import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
 import Data.Text.Prettyprint.Doc
 
@@ -20,21 +23,15 @@ import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as BS
 
-myCreds :: MonadIO m => 
-  BS.ByteString -> 
-  m (OAuth2Result (Credentials, Customer))
-
-myCreds = credentials 
+testCreds :: InitialInfo
+testCreds = IInfo
  "560672271820-6isihukhrj7dfpttj5crg2mrc5lu8dm3.apps.googleusercontent.com"
  "RYGhhsVyiG6QU8wKupZKktsw"
  "P3qxmMbAvMJuPpolIpsnHQ"
- "194-065-2754"
+ "288-897-8527"
 
 call :: AdWords () -> IO ((), Text)
-call = withSaved "customer" "creds" . withCustomer "834-292-8845" 
-
-printUrl = BS.putStrLn $ exchangeCodeUrl 
-  "560672271820-6isihukhrj7dfpttj5crg2mrc5lu8dm3.apps.googleusercontent.com"
+call = withSaved "customer" "creds" . withCustomer "149-309-2425" 
 
 addCampaign = call $ do
   refresh
@@ -89,14 +86,14 @@ queries = call $ do
   {-addCampaignCriterion 920518723 $ -}
     {-Proximity (Right $ CityOnly "Bydgoszcz") KILOMETERS 20-}
 
-  addExpandedTextAd 
-    47620349193 
-    "hd1" 
-    "hd2" 
-    "description" 
-    "path1" 
-    "path2"
-    ["https://time.is"]
+  -- addExpandedTextAd 
+  --   47620349193 
+  --   "hd1" 
+  --   "hd2" 
+  --   "description" 
+  --   "path1" 
+  --   "path2"
+  --   ["https://time.is"]
 
   {-pauseAd 47620349193 219215737667-}
   {-enableAd 47620349193 219215737667-}
@@ -106,10 +103,10 @@ queries = call $ do
   {-changeBidding 920518723 1574236878-}
   {-pauseAd 43187312846-}
   {-enableAd 43187312846-}
-  {-campaigns-}
-  {-adGroups-}
+  -- campaigns
+  adGroups
   {-adGroupAds-}
-  adDetails 219181330005
+  -- adDetails 219181330005
   {-adRemove 219215737667 47620349193-}
   {-biddingStrategies-}
   {-adStats-}
@@ -119,9 +116,9 @@ queries = call $ do
   {-adGroupFeeds-}
   {-feeds-}
   {-campaignGroupPerformanceTarget-}
-  >>= liftIO . putDoc . vsep . map dshow
-  {->>= liftIO . putDoc . vsep . map dshow . responseBody-}
-  {->>= liftIO . pprint . responseBody-}
+  -- >>= liftIO . putDoc . vsep . map dshow
+  >>= liftIO . putDoc . vsep . map dshow . responseBody
+  -- >>= liftIO . pprint . responseBody
 
 serviceCall = call $ do
   refresh
@@ -157,9 +154,9 @@ awqlReport = call $ do
 main = do
   setLocaleEncoding utf8
 
+  - awqlReport
   {-serviceCall-}
   {-xmlReport-}
-  {-awqlReport-}
   {-printUrl-}
   {-addBudget-}
   {-addCampaign-}

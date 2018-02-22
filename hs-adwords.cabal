@@ -16,16 +16,18 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     AdWords 
-                     , AdWords.Auth 
                      , AdWords.Details
                      , AdWords.Service
+                     , AdWords.Types
+                     , AdWords.Auth 
+                     , AdWords.Auth.Server
 
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings DeriveGeneric BangPatterns
   build-depends:       base >= 4.7 && < 5
                      , bytestring
                      , uri-bytestring
-                     , blaze-builder
+                     , scotty
                      , text
                      , hoauth2
                      , http-client
@@ -42,6 +44,7 @@ library
                      , vector
                      , attoparsec
                      , transformers
+                     , open-browser
 
 Test-Suite test-adwords
   type:       exitcode-stdio-1.0
@@ -59,3 +62,4 @@ Test-Suite test-adwords
                      , http-client
                      , microlens
                      , prettyprinter
+                     , open-browser

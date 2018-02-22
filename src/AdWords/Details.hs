@@ -7,6 +7,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Lazy.Char8 as BL
 
 import AdWords 
+import AdWords.Types
 import AdWords.Service
 
 import Network.HTTP.Client (Response)
