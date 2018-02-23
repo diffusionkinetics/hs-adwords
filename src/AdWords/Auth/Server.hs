@@ -30,20 +30,20 @@ exchangeCodeUrl (IInfo cid _ _ _) =
   <> T.unpack cid
   <> "&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fadwords&redirect_uri=http://localhost:9999/callback&access_type=offline&prompt=consent"
 
-authServer :: InitialInfo -> IO ()
-authServer = scotty 9999 . get "/callback" . callbackH 
+authServer :: FilePath -> InitialInfo -> IO ()
+authServer file = scotty 9999 . get "/callback" . callbackH file
 
-authViaBrowser :: InitialInfo -> IO ()
-authViaBrowser info = getExchangeCode info >>= bool
+authViaBrowser :: FilePath -> InitialInfo -> IO ()
+authViaBrowser file info = getExchangeCode info >>= bool
   (putStrLn "error: failed to open system browser")
-  (authServer info)
+  (authServer file info)
 
-callbackH :: InitialInfo -> ActionM ()
-callbackH info = do
+callbackH :: FilePath -> InitialInfo -> ActionM ()
+callbackH file info = do
     code <- param "code" 
     bool (liftIO $ 
             initCredentials info (ExchangeToken code) >>= 
-            saveExchanged "creds")
+            saveExchanged file)
          (liftIO $ print "error: invalid authorization code")
          (null $ T.unpack code)
 
