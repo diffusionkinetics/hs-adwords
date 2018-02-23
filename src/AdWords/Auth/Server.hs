@@ -1,6 +1,6 @@
 module AdWords.Auth.Server 
-  ( authorizeURL
-  , authorizeBrowser
+  ( authServer
+  , authViaBrowser
   )
   where
 
@@ -30,24 +30,21 @@ exchangeCodeUrl (IInfo cid _ _ _) =
   <> T.unpack cid
   <> "&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fadwords&redirect_uri=http://localhost:9999/callback&access_type=offline&prompt=consent"
 
-authorizeURL :: InitialInfo -> IO ()
-authorizeURL info = do
-  print . exchangeCodeUrl $ info 
-  scotty 9999 . get "/callback" $ (callbackH info)
-  
+authServer :: InitialInfo -> IO ()
+authServer = scotty 9999 . get "/callback" . callbackH 
 
-authorizeBrowser :: InitialInfo -> IO ()
-authorizeBrowser info = getExchangeCode info >>= bool
+authViaBrowser :: InitialInfo -> IO ()
+authViaBrowser info = getExchangeCode info >>= bool
   (putStrLn "error: failed to open system browser")
-  (scotty 9999 . get "/callback" $ callbackH info)
+  (authServer info)
 
 callbackH :: InitialInfo -> ActionM ()
 callbackH info = do
     code <- param "code" 
-    bool (liftIO $ print "error: invalid authorization code")
-         (liftIO $ 
+    bool (liftIO $ 
             initCredentials info (ExchangeToken code) >>= 
             saveExchanged "creds")
+         (liftIO $ print "error: invalid authorization code")
          (null $ T.unpack code)
 
 initCredentials :: MonadIO m =>

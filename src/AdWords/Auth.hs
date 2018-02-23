@@ -2,8 +2,7 @@ module AdWords.Auth
   ( postRequest
   , reportUrlEncoded
   , refresh
-  , authorizeURL
-  , authorizeBrowser
+  , authViaBrowser
   , defaultIInfo
   ) where
 
@@ -22,7 +21,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
 
 import AdWords.Types
-import AdWords.Auth.Server (authorizeBrowser, authorizeURL)
+import AdWords.Auth.Server (authViaBrowser)
 
 defaultIInfo :: DeveloperToken -> ClientCustomerId -> InitialInfo
 defaultIInfo = IInfo 

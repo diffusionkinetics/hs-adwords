@@ -2,12 +2,15 @@
 module Main where
 
 import GHC.IO.Encoding
+
 import AdWords
+import AdWords.FS
 import AdWords.Types
 import AdWords.Details
 import AdWords.Service
 import AdWords.Auth
 import AdWords.Auth.Server 
+
 import Network.OAuth.OAuth2
 import Control.Monad.RWS
 import Lens.Micro
@@ -28,8 +31,9 @@ testCreds = defaultIInfo
  "P3qxmMbAvMJuPpolIpsnHQ"
  "288-897-8527"
 
-call :: AdWords () -> IO ((), Text)
-call = withSaved "customer" "creds" . withCustomer "149-309-2425" 
+call :: AdWords IO () -> IO Text
+call = fmap go . withSaved "creds" . withCustomer "149-309-2425" 
+  where go (_, _, res) = res
 
 addCampaign = call $ do
   refresh
@@ -152,7 +156,7 @@ awqlReport = call $ do
 main = do
   setLocaleEncoding utf8
 
-  - awqlReport
+  -- awqlReport
   {-serviceCall-}
   {-xmlReport-}
   {-printUrl-}
