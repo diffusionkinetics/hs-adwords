@@ -18,7 +18,7 @@ import qualified Network.OAuth.OAuth2.AuthorizationRequest as OAR
 import qualified Network.OAuth.OAuth2.TokenRequest as OTR
 
 import AdWords.Types
-import AdWords (saveExchanged)
+import AdWords.FS(saveExchanged)
 
 getExchangeCode :: InitialInfo -> IO Bool
 getExchangeCode = openBrowser . exchangeCodeUrl
@@ -39,7 +39,7 @@ callbackH info = do
     code <- param "code"
     liftIO $ 
       initCredentials info (ExchangeToken code) >>= 
-      saveExchanged "creds" "customer"
+      saveExchanged "creds"
 
 initCredentials :: MonadIO m =>
      InitialInfo

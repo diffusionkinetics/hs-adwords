@@ -1,4 +1,10 @@
-module AdWords.Auth where
+module AdWords.Auth 
+  ( postRequest
+  , reportUrlEncoded
+  , refresh
+  , authorize
+  , defaultIInfo
+  ) where
 
 import Network.OAuth.OAuth2
 import Network.OAuth.OAuth2.TokenRequest (Errors(..))
@@ -15,11 +21,17 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
 
 import AdWords.Types
+import AdWords.Auth.Server (authorize)
 
-postRequest ::
+defaultIInfo :: DeveloperToken -> ClientCustomerId -> InitialInfo
+defaultIInfo = IInfo 
+ "560672271820-6isihukhrj7dfpttj5crg2mrc5lu8dm3.apps.googleusercontent.com"
+ "RYGhhsVyiG6QU8wKupZKktsw"
+
+postRequest :: MonadIO m => 
      String
   -> BS.ByteString
-  -> AdWords (Response BL.ByteString)
+  -> AdWords m (Response BL.ByteString)
 postRequest url body = do
   req <- liftIO $ parseRequest url
   token <- _accessToken <$> get
@@ -36,19 +48,13 @@ postRequest url body = do
                   }
   liftIO $ httpLbs req' man
 
-tshow :: Show a => a -> Text
-tshow = T.pack . show
-
 text2bs :: Text -> BS.ByteString
 text2bs = BS.pack . T.unpack 
 
-bs2text :: BS.ByteString -> Text
-bs2text = T.pack . BS.unpack
-
-reportUrlEncoded ::
+reportUrlEncoded :: MonadIO m => 
      String
   -> [(BS.ByteString, BS.ByteString)]
-  -> AdWords (Response BL.ByteString)
+  -> AdWords m (Response BL.ByteString)
 reportUrlEncoded url body = do
   req <- liftIO $ parseRequest url
   token <- _accessToken <$> get
@@ -66,7 +72,7 @@ reportUrlEncoded url body = do
 
   liftIO $ httpLbs (urlEncodedBody body req') man
 
-refresh :: AdWords ()
+refresh :: MonadIO m => AdWords m ()
 refresh = do
   ccid <- _clientCustomerID <$> get
   Credentials creds _ refToken <- ask

@@ -24,9 +24,7 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as BS
 
 testCreds :: InitialInfo
-testCreds = IInfo
- "560672271820-6isihukhrj7dfpttj5crg2mrc5lu8dm3.apps.googleusercontent.com"
- "RYGhhsVyiG6QU8wKupZKktsw"
+testCreds = defaultIInfo
  "P3qxmMbAvMJuPpolIpsnHQ"
  "288-897-8527"
 

@@ -1,52 +1,39 @@
 module AdWords 
-  ( module AdWords.Auth
-  , module AdWords
-  , module Text.XML.Writer
+  ( module Text.XML.Writer
+  , runAdWords
+  , InitialInfo (..)
+  , withCustomer
+  , AWQL
+  , Format
+  , header
+  , api
+  , api'
+  , type'
+  , name
+  , (#) 
+  , (#?)
+  , (##)
+  , names
+  , query
+  , reportXML
+  , reportAWQL
+  , request
   ) where
   
 import AdWords.Auth 
-import AdWords.Service
+import AdWords.Service (nameSpace, serviceUrl, Service)
 import AdWords.Types
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as BS
 
-import Network.OAuth.OAuth2.Internal
-import Data.Binary (decodeFile, encodeFile)
+import Control.Monad.RWS
 import Data.Text (Text)
 import Text.XML.Writer
 import Text.XML
-import Control.Monad.RWS
 import Network.HTTP.Client (Response(..))
 
-loadCustomer :: MonadIO m => FilePath -> m Customer
-loadCustomer = liftIO . decodeFile 
-
-saveCustomer :: MonadIO m => FilePath -> Customer -> m ()
-saveCustomer file = liftIO . encodeFile file
-
-loadCreds :: MonadIO m => FilePath -> m Credentials
-loadCreds = liftIO . decodeFile 
-
-saveCreds :: MonadIO m => FilePath -> Credentials -> m ()
-saveCreds file = liftIO . encodeFile file
-
-saveExchanged :: Show e => 
-   FilePath -> FilePath -> OAuth2Result e (Credentials, Customer) -> IO ()
-saveExchanged fcreds fcustomer res = case res of 
-  Left err -> print err
-  Right (creds, customer) -> do
-    saveCustomer fcustomer customer
-    saveCreds fcreds creds
-  
--- cached customer path -> cached credentials path -> action -> IO (a, Text)
-withSaved :: FilePath -> FilePath -> AdWords a -> IO (a, Text)
-withSaved fcustomer fcreds session = do
-  customer <- loadCustomer fcustomer
-  creds <- loadCreds fcreds
-  evalRWST session creds customer
-
-withCustomer :: ClientCustomerId -> AdWords a -> AdWords a
+withCustomer :: MonadIO m => ClientCustomerId -> AdWords m a -> AdWords m a
 withCustomer ccid session = do
   oldCustomer <- get
   put (oldCustomer { _clientCustomerID = ccid })
@@ -94,22 +81,22 @@ names = many . name
 query :: Text -> XML
 query str = "query" # "query" ## str
 
-reportXML :: XML -> AdWords (Response BL.ByteString)
+reportXML :: MonadIO m => XML -> AdWords m (Response BL.ByteString)
 reportXML body = reportUrlEncoded url payload
   where payload = [("__rdxml", BL.toStrict (renderLBS (def {rsPretty = False}) doc))]
         url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
         doc = document (name "reportDefinition") body
 
-reportAWQL :: AWQL -> Format -> AdWords (Response BL.ByteString)
+reportAWQL :: MonadIO m => AWQL -> Format -> AdWords m (Response BL.ByteString)
 reportAWQL queryString format = reportUrlEncoded url payload 
   where payload = [ ("__fmt", format) 
                   , ("__rdquery", queryString) ]
         url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
 
-request :: 
+request :: MonadIO m => 
      Service
   -> XML 
-  -> AdWords (Response Document)
+  -> AdWords m (Response Document)
 request service body = do
   ccid  <- _clientCustomerID <$> get
   Credentials _ devToken _ <- ask

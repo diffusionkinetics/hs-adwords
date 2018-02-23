@@ -1,7 +1,25 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module AdWords.Types where
+module AdWords.Types 
+  ( tlsManager
+  , accessTokenEntpoint
+  , authorizeEndpoint
+  , callback
+  , ClientId
+  , ClientSecret
+  , ClientCustomerId
+  , DeveloperToken
+  , ExchangeKey
+  , InitialInfo (..)
+  , Customer (..)
+  , Credentials (..)
+  , AdWords
+  , runAdWords
+  , MonadIO
+  , liftIO
+  , tshow
+  ) where
 
 import Data.Text (Text)
 
@@ -9,18 +27,17 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Binary as BI
 import qualified Data.Text as T
-import Control.Monad.RWS (RWST)
-
+import Control.Monad.RWS (RWST, runRWST)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import URI.ByteString
 import URI.ByteString.QQ
 
 import Data.Function (on)
-import Network.HTTP.Client
-import Network.HTTP.Client.TLS 
+import Network.HTTP.Client (Manager, newManager)
+import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.OAuth.OAuth2.Internal 
-import Network.OAuth.OAuth2.AuthorizationRequest
 
 tlsManager :: IO Manager
 tlsManager = newManager tlsManagerSettings
@@ -66,6 +83,9 @@ instance Binary OAuth2 where
     <*> pure accessTokenEntpoint
     <*> pure callback
 
+tshow :: Show a => a -> Text
+tshow = T.pack . show
+
 deriving instance Generic AccessToken
 deriving instance Generic RefreshToken
 instance Binary AccessToken
@@ -73,4 +93,11 @@ instance Binary RefreshToken
 instance Binary Credentials
 instance Binary Customer
 
-type AdWords = RWST Credentials Text Customer IO
+type AdWords m = RWST Credentials Text Customer m
+
+runAdWords :: MonadIO m => 
+     AdWords m a 
+  -> Credentials 
+  -> Customer
+  -> m (a, Customer, Text)
+runAdWords r = runRWST r
