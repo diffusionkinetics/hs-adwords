@@ -7,6 +7,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Lazy.Char8 as BL
 
 import AdWords 
+import AdWords.Types
 import AdWords.Service
 
 import Network.HTTP.Client (Response)
@@ -51,7 +52,7 @@ instance FromRecord Score
 instance FromField Score where
   parseField s = Score <$> parseField s <|> pure NoScore
 
-adStats :: AdWords (Either String (Vector AdStats))
+adStats :: MonadIO m =>AdWords m (Either String (Vector AdStats))
 adStats = 
   reportAWQL 
     "select Id, Impressions, CreativeQualityScore, Clicks, AveragePosition, Cost from KEYWORDS_PERFORMANCE_REPORT"
@@ -60,7 +61,7 @@ adStats =
 
 ------
 
-pauseAd :: Int -> Int -> AdWords (Response [Value])
+pauseAd :: MonadIO m => Int -> Int -> AdWords m (Response [Value])
 pauseAd adGroup_id ad_id = do
   request AdGroupAdService $
     "mutate" # 
@@ -73,7 +74,7 @@ pauseAd adGroup_id ad_id = do
           "status" ## "PAUSED"
   <&> fmap rval          
 
-enableAd :: Int -> Int -> AdWords (Response [Value])
+enableAd :: MonadIO m => Int -> Int -> AdWords m (Response [Value])
 enableAd adGroup_id ad_id = do
   request AdGroupAdService $
     "mutate" #
@@ -86,7 +87,7 @@ enableAd adGroup_id ad_id = do
           "status" ## "ENABLED"
   <&> fmap rval
 
-changeBudget :: Int -> Int -> AdWords (Response [Value])
+changeBudget :: MonadIO m => Int -> Int -> AdWords m (Response [Value])
 changeBudget campId budgetId = do
   request CampaignService $
     "mutate" # 
@@ -98,7 +99,7 @@ changeBudget campId budgetId = do
             "budgetId" ## tshow budgetId
   <&> fmap rval
 
-changeBidding :: Int -> Int -> AdWords (Response [Value])
+changeBidding :: MonadIO m => Int -> Int -> AdWords m (Response [Value])
 changeBidding campId bidId = do
   request CampaignService $
     "mutate" #
@@ -110,7 +111,7 @@ changeBidding campId bidId = do
             "biddingStrategyId" ## tshow bidId
   <&> fmap rval
 
-addExpandedTextAd :: 
+addExpandedTextAd :: MonadIO m =>
      Int    -- ad goup id
   -> Text   -- headlinePart1
   -> Text   -- headlinePart2
@@ -118,7 +119,7 @@ addExpandedTextAd ::
   -> Text   -- path1 
   -> Text   -- path2
   -> [Text] -- finalUrls
-  -> AdWords (Response [Value])
+  -> AdWords m (Response [Value])
 addExpandedTextAd adGroupId hd1 hd2 desc ph1 ph2 urls = do
   request AdGroupAdService $
     "mutate" #
@@ -158,10 +159,10 @@ data GeoTarget =
     Location Text -- location name
   | Proximity GeoPoint DistanceUnits Radius
 
-addCampaignCriterion :: 
+addCampaignCriterion :: MonadIO m =>
      Int 
   -> GeoTarget 
-  -> AdWords (Response [Value])
+  -> AdWords m (Response [Value])
 addCampaignCriterion camp_id target = 
   mapped . mapped %~ rval $ request CampaignCriterionService $ do
     "mutate" # "operations" # do
@@ -198,7 +199,7 @@ addCampaignCriterion camp_id target =
                       "postalCode" ## postCode
                       "countryCode" ## countryCode
 
-adRemove :: Int -> Int -> AdWords (Response Document)
+adRemove :: MonadIO m => Int -> Int -> AdWords m (Response Document)
 adRemove adId adGroupId = request AdGroupAdService $
   "mutate" # "operations" # do
     "operator" ## "REMOVE"
@@ -207,26 +208,31 @@ adRemove adId adGroupId = request AdGroupAdService $
       "ad" # "id" ## tshow adId
       
 
-adDetails :: Int -> AdWords [Value]
+adDetails :: MonadIO m => Int -> AdWords m [Value]
 adDetails = 
-  let askAd :: Int -> MaybeT (WriterT [Value] AdWords) [Value]
+  let askAd :: MonadIO m => 
+        Int -> MaybeT (WriterT [Value] (AdWords m)) [Value]
       askAd adId = ask AdGroupAdService . query $
         "select HeadlinePart1, HeadlinePart2, Id, Description, Path1, Path2, AdGroupId, CreativeFinalUrls where Id = " <> tshow adId
 
-      ask :: Service -> XML -> MaybeT (WriterT [Value] AdWords) [Value]
+      ask :: MonadIO m => 
+        Service -> XML -> MaybeT (WriterT [Value] (AdWords m)) [Value]
       ask serv = MaybeT . WriterT . fmap ((\x -> (pure x, x)) . rval . responseBody) . request serv
 
-      find :: Text -> [Value] -> MaybeT (WriterT [Value] AdWords) Text
+      find :: MonadIO m => 
+        Text -> [Value] -> MaybeT (WriterT [Value] (AdWords m)) Text
       find txt = MaybeT . pure . fmap (view _Content) . Map.lookup txt . Map.unions . foldMap allObjects
 
       finds :: [Text] -> [Value] -> [Value]
       finds txts = catMaybes . (Map.lookup <$> txts <*>) . pure . Map.unions . foldMap allObjects
 
-      askGroup :: Text -> MaybeT (WriterT [Value] AdWords) [Value]
+      askGroup :: MonadIO m => 
+        Text -> MaybeT (WriterT [Value] (AdWords m)) [Value]
       askGroup groupId = ask AdGroupService . query $ 
         "select BiddingStrategyId, CampaignId, Id where Id = " <> groupId
 
-      askCriterion :: Text -> MaybeT (WriterT [Value] AdWords) [Value]
+      askCriterion :: MonadIO m => 
+        Text -> MaybeT (WriterT [Value] (AdWords m)) [Value]
       askCriterion campId = ask CampaignCriterionService . query $ 
         "select Address, RadiusDistanceUnits, RadiusInUnits, CampaignId where CampaignId = " <> campId
 
@@ -242,19 +248,20 @@ adDetails =
         , "radiusDistanceUnits"
         ]
 
-      aboutAd :: Int -> MaybeT (WriterT [Value] AdWords) [Value]
+      aboutAd :: MonadIO m =>
+        Int -> MaybeT (WriterT [Value] (AdWords m)) [Value]
       aboutAd = askCriterion <=< find "campaignId" <=< askGroup <=< find "adGroupId" <=< askAd
 
    in fmap (finds relevantFields) . execWriterT . runMaybeT . aboutAd
      
 ------
 
-printResponse :: Service -> XML -> AdWords ()
+printResponse :: MonadIO m => Service -> XML -> AdWords m ()
 printResponse serv body =
   request serv body >>= 
     liftIO . putDoc . vsep . map dshow . rval . responseBody
 
-details :: Service -> [Text] -> AdWords (Response [Value])
+details :: MonadIO m => Service -> [Text] -> AdWords m (Response [Value])
 details serv fields =
   request serv (query $ "select " <> T.intercalate ", " fields)
   <&> fmap rval
@@ -334,7 +341,7 @@ rval r = r ^.. elements . named "entries" . to ge
       NodeComment _  -> Content "not supported content"
       NodeInstruction _ -> Content "not supported content"
 
-campaignCriterions :: AdWords (Response [Value])
+campaignCriterions :: MonadIO m => AdWords m (Response [Value])
 campaignCriterions = details CampaignCriterionService selectable
   where selectable :: [Text]
         selectable =
@@ -401,7 +408,7 @@ campaignCriterions = details CampaignCriterionService selectable
           , "VideoName"
           ]
 
-biddingStrategies :: AdWords (Response [Value])
+biddingStrategies :: MonadIO m => AdWords m (Response [Value])
 biddingStrategies = details BiddingStrategyService selectable
   where selectable :: [Text]
         selectable =
@@ -412,7 +419,7 @@ biddingStrategies = details BiddingStrategyService selectable
           , "Type"
           ]
 
-adGroupAds :: AdWords (Response [Value])
+adGroupAds :: MonadIO m => AdWords m (Response [Value])
 adGroupAds = details AdGroupAdService selectable
   where selectable :: [Text]
         selectable = 
@@ -492,7 +499,7 @@ adGroupAds = details AdGroupAdService selectable
           , "YouTubeVideoIdString"
           ]
 
-adGroupFeeds :: AdWords (Response [Value])
+adGroupFeeds :: MonadIO m => AdWords m (Response [Value])
 adGroupFeeds = details AdGroupFeedService selectable
   where selectable :: [Text]
         selectable = 
@@ -505,7 +512,7 @@ adGroupFeeds = details AdGroupFeedService selectable
           , "Status"
           ]
 
-adGroups :: AdWords (Response [Value])
+adGroups :: MonadIO m => AdWords m (Response [Value])
 adGroups = details AdGroupService selectable
   where selectable :: [Text]
         selectable = 
@@ -536,7 +543,7 @@ adGroups = details AdGroupService selectable
           , "UrlCustomParameters"
           ]
 
-budgets :: AdWords (Response [Value])
+budgets :: MonadIO m => AdWords m (Response [Value])
 budgets = details BudgetService selectable
   where selectable :: [Text]
         selectable = 
@@ -549,7 +556,7 @@ budgets = details BudgetService selectable
           , "IsBudgetExplicitlyShared"
           ]
 
-campaigns :: AdWords (Response [Value])
+campaigns :: MonadIO m => AdWords m (Response [Value])
 campaigns = details CampaignService selectable
   where selectable :: [Text]
         selectable =
@@ -601,7 +608,7 @@ campaigns = details CampaignService selectable
           , "UrlCustomParameters"
           ]
 
-campaignFeeds :: AdWords (Response [Value])
+campaignFeeds :: MonadIO m => AdWords m (Response [Value])
 campaignFeeds = details CampaignFeedService selectable
   where selectable :: [Text]
         selectable = 
@@ -613,7 +620,7 @@ campaignFeeds = details CampaignFeedService selectable
           , "Status"
           ]
 
-feeds :: AdWords (Response [Value])
+feeds :: MonadIO m => AdWords m (Response [Value])
 feeds = details FeedService selectable
   where selectable :: [Text]
         selectable =
