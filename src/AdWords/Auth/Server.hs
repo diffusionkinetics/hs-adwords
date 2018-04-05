@@ -1,6 +1,7 @@
 module AdWords.Auth.Server 
   ( authServer
   , authViaBrowser
+  , initCredentials
   )
   where
 
