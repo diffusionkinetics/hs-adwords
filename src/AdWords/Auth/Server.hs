@@ -1,4 +1,4 @@
-module AdWords.Auth.Server 
+module AdWords.Auth.Server
   ( authServer
   , authViaBrowser
   , initCredentials
@@ -41,38 +41,39 @@ authViaBrowser file info = getExchangeCode info >>= bool
 
 callbackH :: FilePath -> InitialInfo -> ActionM ()
 callbackH file info = do
-    code <- param "code" 
-    bool (liftIO $ 
-            initCredentials info (ExchangeToken code) >>= 
+    code <- param "code"
+    bool (liftIO $
+            initCredentials callback info (ExchangeToken code) >>=
             saveExchanged file)
          (liftIO $ print "error: invalid authorization code")
          (null $ T.unpack code)
 
 initCredentials :: MonadIO m =>
-     InitialInfo
+     Maybe URI
+  -> InitialInfo
   -> ExchangeToken
   -> m (OAuth2Result OTR.Errors (Credentials, Customer))
-initCredentials (IInfo cliendId clientSecret devToken ccid) = liftIO . go
-  where 
+initCredentials mcb (IInfo cliendId clientSecret devToken ccid) = liftIO . go
+  where
     oa = OAuth2
             cliendId
             clientSecret
             authorizeEndpoint
             accessTokenEntpoint
-            callback
-    getRefreshToken :: OAuth2Result OTR.Errors OAuth2Token 
+            mcb
+    getRefreshToken :: OAuth2Result OTR.Errors OAuth2Token
                     -> OAuth2Result OTR.Errors RefreshToken
     getRefreshToken (Left err) = Left err
     getRefreshToken (Right (OAuth2Token _ mbreft _ _ _)) = case mbreft of
       Just reftoken -> Right reftoken
-      Nothing -> Left $ OAuth2Error 
-        (Left "no RefreshToken received") 
+      Nothing -> Left $ OAuth2Error
+        (Left "no RefreshToken received")
         (Just "no RefreshToken received")
         Nothing
 
-    go xchanget = do 
-      man <- tlsManager 
+    go xchanget = do
+      man <- tlsManager
       res <- fetchAccessToken man oa xchanget
-      return $ (,) 
+      return $ (,)
           <$> (Credentials oa devToken <$> getRefreshToken res)
           <*> (Customer ccid . accessToken <$> res)
