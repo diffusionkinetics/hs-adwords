@@ -55,7 +55,7 @@ api' :: Maybe Text
 api' = Just api
 
 api :: Text
-api = "https://adwords.google.com/api/adwords/cm/v201708"
+api = "https://adwords.google.com/api/adwords/cm/v201802"
 
 type' :: Text -> [(Name, Text)]
 type' t = [(Name "xsi:type" Nothing Nothing, t)]
@@ -84,14 +84,14 @@ query str = "query" # "query" ## str
 reportXML :: MonadIO m => XML -> AdWords m (Response BL.ByteString)
 reportXML body = reportUrlEncoded url payload
   where payload = [("__rdxml", BL.toStrict (renderLBS (def {rsPretty = False}) doc))]
-        url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
+        url = "https://adwords.google.com/api/adwords/reportdownload/v201802"
         doc = document (name "reportDefinition") body
 
 reportAWQL :: MonadIO m => AWQL -> Format -> AdWords m (Response BL.ByteString)
 reportAWQL queryString format = reportUrlEncoded url payload 
   where payload = [ ("__fmt", format) 
                   , ("__rdquery", queryString) ]
-        url = "https://adwords.google.com/api/adwords/reportdownload/v201705"
+        url = "https://adwords.google.com/api/adwords/reportdownload/v201802"
 
 request :: MonadIO m => 
      Service

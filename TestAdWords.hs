@@ -105,8 +105,8 @@ queries = call $ do
   {-changeBidding 920518723 1574236878-}
   {-pauseAd 43187312846-}
   {-enableAd 43187312846-}
-  -- campaigns
-  adGroups
+  campaigns
+  -- adGroups
   {-adGroupAds-}
   -- adDetails 219181330005
   {-adRemove 219215737667 47620349193-}
