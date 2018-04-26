@@ -601,7 +601,7 @@ campaigns = details CampaignService selectable
           , "TargetRoasBidFloor"
           , "TargetSearchNetwork"
           , "TargetSpendBidCeiling"
-          , "TargetSpendEnhancedCpcEnabled"
+          --, "TargetSpendEnhancedCpcEnabled"
           , "TargetSpendSpendTarget"
           , "TimeUnit"
           , "TrackingUrlTemplate"
