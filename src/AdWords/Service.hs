@@ -153,7 +153,7 @@ serviceUrl x = T.unpack $ case x of
     -> "https://adwords.google.com/api/adwords/cm/" <> version <> "/TrialService"
 
 version :: Text
-version = "v201708"
+version = "v201802"
 
 cm :: Text
 cm = "https://adwords.google.com/api/adwords/cm/" <> version
