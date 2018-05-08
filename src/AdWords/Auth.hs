@@ -48,7 +48,7 @@ postRequest url body = do
                   }
   --liftIO $ print req'
   res <- liftIO $ httpLbs req' man
-  --liftIO $ print res
+  liftIO $ print res
   return res
 
 text2bs :: Text -> BS.ByteString

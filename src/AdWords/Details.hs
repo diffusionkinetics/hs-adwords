@@ -341,6 +341,25 @@ rval r = r ^.. elements . named "entries" . to ge
       NodeComment _  -> Content "not supported content"
       NodeInstruction _ -> Content "not supported content"
 
+
+docElems :: Document -> [Value]
+docElems r = r ^.. elements . to ge
+{-rval r = r ^.. root . to ge-}
+  where
+    elements = root . to allChildren . traverse . _NodeElement
+
+    ge :: Element -> Value
+    ge (Element (Name n _ _) _ ns) 
+      | length ns == 1 = Object . Map.singleton n . gn . head $ ns
+      | otherwise =      Object . Map.singleton n . List $ gn <$> ns
+        
+    gn :: Node -> Value
+    gn n = case n of
+      NodeElement el -> ge el
+      NodeContent c  -> Content c
+      NodeComment _  -> Content "not supported content"
+      NodeInstruction _ -> Content "not supported content"
+
 campaignCriterions :: MonadIO m => AdWords m (Response [Value])
 campaignCriterions = details CampaignCriterionService selectable
   where selectable :: [Text]

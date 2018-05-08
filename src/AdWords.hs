@@ -110,5 +110,6 @@ request service body = do
             , ("ns", nameSpace service)
             ]
         }
+  liftIO $ BS.putStrLn req
 
   fmap (parseLBS_ def) <$> postRequest (serviceUrl service) req
