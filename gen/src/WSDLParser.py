@@ -2,11 +2,9 @@
 from .AST import * 
 from zeep import * 
 
-from zeep.xsd.types import * 
-from zeep.xsd.elements.indicators import *
-
 import lxml.etree as ET
 
+from .schema import * 
 
 class WSDLParser(object):
 
@@ -15,7 +13,8 @@ class WSDLParser(object):
         self.root = ET.parse(path).getroot()
 
     def get_schemas(self):
-        return [e for e in self.root.iter() if e.tag.endswith("schema")]
+        schemas = [e for e in self.root.iter() if clear_tag(e) == "schema"]
+        return [Schema(s) for s in schemas]
 
     def get_types(self):
         schemas = self.get_schemas() 
