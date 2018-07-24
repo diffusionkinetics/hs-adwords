@@ -19,3 +19,13 @@ class HaskellCodeBuilder:
         self.code += "data %s = " % name 
         self.code += " | ".join([self.constructor(cname, cfields) for cname, cfields in constructors])
         self.code += " deriving (Show, Generic)"
+
+    def function(self, name, args, result, expression):
+        """
+        namme: name of a function
+        args: dictionary mapping argument name to its type
+        result: string representing typename
+        """
+        self.code += "\n%s :: %s\n" % (name, " -> ".join([t for n,t in args.items()] + [result]))
+        self.code += "%s %s = %s\n\n" % (name, " ".join([n for n,t in args.items()]), expression)
+
