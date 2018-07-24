@@ -29,3 +29,5 @@ class HaskellCodeBuilder:
         self.code += "\n%s :: %s\n" % (name, " -> ".join([t for n,t in args.items()] + [result]))
         self.code += "%s %s = %s\n\n" % (name, " ".join([n for n,t in args.items()]), expression)
 
+    def get_code(self):
+        return self.code
