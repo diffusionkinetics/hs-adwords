@@ -19,7 +19,7 @@ class HaskellCodeBuilder:
         name: name of a type 
         constructors: list of tuples (constructor_name, fields) where fields is dictionary of mapping field name to typename 
         """
-        self.code += "data %s = " % name 
+        self.code += "\n\ndata %s = " % name 
         self.code += " | ".join([self.constructor(cname, cfields) for cname, cfields in constructors])
         self.code += " deriving (Show, Generic)"
 

@@ -14,5 +14,13 @@ class HaskellCodeGenerator(CodeGenerator):
             code("serviceUrl %s = %s" % (service.name, list(service.ports.values())[0].binding_options["address"]))
         return str(code)
 
-    def parse_schema(self, parser):
-        raise NotImplementedError
+    def parse_schemas(self, parser):
+        code = HaskellCodeBuilder()
+        for schema in parser.get_schemas():
+            for ct in schema.complex_types:
+                fields = {}
+                for sequence in ct.sequences:
+                    for e in sequence.elements:
+                        fields[e.name] = e.type
+                code.type(ct.name, [(ct.name, fields)])
+        return str(code)
