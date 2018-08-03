@@ -6,7 +6,20 @@ import lxml.etree as ET
 
 from .schema import * 
 
-class WSDLParser(object):
+class Parser:
+    def get_schemas(self):
+        raise NotImplementedError
+
+    def get_services(self):
+        raise NotImplementedError
+
+    def get_messages(self):
+        raise NotImplementedError
+
+    def __add__(self, other):
+        return ParserUnion([self, other])
+
+class WSDLParser(Parser):
 
     def __init__(self, path):
         self.data = self.parse(path)
@@ -18,15 +31,6 @@ class WSDLParser(object):
 
     def get_services(self):
         return list(self.data.services.values())
-
-    def get_types(self):
-        schemas = self.get_schemas() 
-        res = [] 
-        for schema in schemas:
-            for e in schema.iter():
-                if e.tag.endswith("simpleType") or e.tag.endswith("complexType"):
-                    res.append(e)
-        return res
 
     def parse(self, path):
         return Client(path).wsdl
@@ -45,24 +49,15 @@ class WSDLParser(object):
             res.append(Message(name=message.name.localname, fields=fields))
         return res
 
-    def get_elements(self):
-        res = [] 
-        for elem in list(self.data.types.elements)[1:]:
-            if elem.type.__class__.__base__ == ComplexType:
-                res.append(ComplexElement(elem.name, self.__parse_elems(elem.type.elements_nested)))
-            elif elem.type.__class__.__base__ == Sequence:
-                    pass
-            else:
-                res.append(Element(elem.name, str(elem.type.name)))
-        return res
+class ParserUnion(Parser):
+    def __init__(self, items):
+        self.items = items
 
-    def __parse_elems(self, elems):
-        res = [] 
-        for name, typ in elems:
-            if typ.__class__ == ComplexType:
-                res.append(ComplexElement(name, self.__parse_elems(typ)))
-            elif typ.__class__ == Sequence:
-                    res.append(SequenceElement(name=name, type=self.__parse_elems(typ.elements_nested)))
-            else:
-                res.append(Element(name, type = str(typ.name)))
-        return res
+    def get_schemas(self):
+        return sum([item.get_schemas() for item in self.items], [])
+
+    def get_services(self):
+        return sum([item.get_services() for item in self.items], [])
+
+    def get_messages(self):
+        return sum([item.get_services() for item in self.items], [])
