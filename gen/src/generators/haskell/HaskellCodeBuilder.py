@@ -6,9 +6,12 @@ class HaskellCodeBuilder:
 
     def constructor(self, name, fields):
         code = ""
-        code += "%s { " % name 
+        code += "%s " % name 
+        if fields:
+            code += "{ "
         code += "\n\t, ".join(["%s :: %s" % (field, typename) for field,typename in fields.items()])
-        code += " }"
+        if fields:
+            code += " }"
         return code
 
     def type(self, name, constructors):
