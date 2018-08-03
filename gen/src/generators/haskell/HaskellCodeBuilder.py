@@ -23,14 +23,21 @@ class HaskellCodeBuilder:
         self.code += " | ".join([self.constructor(cname, cfields) for cname, cfields in constructors])
         self.code += " deriving (Show, Generic)"
 
-    def function(self, name, args, result, expression):
+    def function(self, name, args, result, expression=None):
         """
         namme: name of a function
         args: dictionary mapping argument name to its type
         result: string representing typename
         """
         self.code += "\n%s :: %s\n" % (name, " -> ".join([t for n,t in args.items()] + [result]))
-        self.code += "%s %s = %s\n\n" % (name, " ".join([n for n,t in args.items()]), expression)
+        if expression is not None:
+            self.code += "%s %s = %s\n\n" % (name, " ".join([n for n,t in args.items()]), expression)
 
     def get_code(self):
         return self.code
+
+    def __str__(self):
+        return self.code
+
+    def __call__(self, code):
+        self.code += "\n%s\n" % code
