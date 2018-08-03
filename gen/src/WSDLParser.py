@@ -16,6 +16,9 @@ class WSDLParser(object):
         schemas = [e for e in self.root.iter() if clear_tag(e) == "schema"]
         return [Schema(s) for s in schemas]
 
+    def get_services(self):
+        return list(self.data.services.values())
+
     def get_types(self):
         schemas = self.get_schemas() 
         res = [] 
