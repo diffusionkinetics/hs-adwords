@@ -14,6 +14,15 @@ class HaskellCodeGenerator(CodeGenerator):
             code("serviceUrl %s = %s" % (service.name, list(service.ports.values())[0].binding_options["address"]))
         return str(code)
 
+    def map_type(self, t):
+        if not ":" in t:
+            t = ":" + t
+        return {
+            "string": "String",
+            "int": "Int",
+            "long": "Int"
+        }.get(t[t.find(":")+1:], t[t.find(":")+1:])
+
     def parse_schemas(self, parser):
         code = HaskellCodeBuilder()
         for schema in parser.get_schemas():
@@ -21,7 +30,7 @@ class HaskellCodeGenerator(CodeGenerator):
                 fields = {}
                 for sequence in ct.sequences:
                     for e in sequence.elements:
-                        fields[e.name] = e.type
+                        fields[e.name] = self.map_type(e.type)
                 code.type(ct.name, [(ct.name, fields)])
                 code("instance ToXML %s where" % ct.name)
                 code("  toXML e = element \"%s\" %s" % (ct.name, "do" if fields != {} else ""))
