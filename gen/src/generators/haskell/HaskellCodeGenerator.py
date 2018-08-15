@@ -23,4 +23,8 @@ class HaskellCodeGenerator(CodeGenerator):
                     for e in sequence.elements:
                         fields[e.name] = e.type
                 code.type(ct.name, [(ct.name, fields)])
+                code("instance ToXML %s where" % ct.name)
+                code("  toXML e = element \"%s\" %s" % (ct.name, "do" if fields != {} else ""))
+                for k,v in fields.items():
+                    code("    element \"%s\" $ content e.%s" % (k,k))
         return str(code)
