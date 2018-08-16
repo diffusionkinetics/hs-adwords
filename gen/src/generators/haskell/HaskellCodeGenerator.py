@@ -34,15 +34,23 @@ class HaskellCodeGenerator(CodeGenerator):
         for k,v in fields.items():
             code("    element \"%s\" $ content e.%s" % (k,k))
         code("instance FromXML %s where" % ct.name)
-        code("  parseIt :: P.Document ")
-        code("  parseIt = case P.parseText def text of ")
-        code("    Left err -> P.parseText_ def \"<haha>lol</haha>\"")
-        code("    Right doc -> doc")
+        code("  parseIt :: Text -> %s" % ct.name)
+        code("  parseIt text = case P.parseText def text of ")
+        code("    Left err -> Left ParseError")
+        code("    Right doc -> Right (parse_%s doc)" % ct.name.lower())
+        fn = "parse_%s" % ct.name.lower()
+        code("%s :: P.Document -> %s" % (fn, ct.name))
+        code("%s (P.Document _ (P.Element _ _ %s) _) = %s %s" % (fn, ":".join(["(NodeContent %s)" % f for f in fields.keys()]) + ":xs" if fields != {} else "[]", 
+            ct.name, 
+            " ".join(fields.keys())
+        ))
+
 
     def parse_schemas(self, parser):
         code = HaskellCodeBuilder()
+        code("data ParseError = ParseError")
         code("class FromXML a where")
-        code("  parseIt :: Text -> a")
+        code("  parseIt :: Text -> Eiither ParseError a")
         for schema in parser.get_schemas():
             for ct in schema.complex_types:
                 self.complex_type(code, ct)
