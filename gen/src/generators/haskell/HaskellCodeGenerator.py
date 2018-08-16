@@ -11,7 +11,7 @@ class HaskellCodeGenerator(CodeGenerator):
             "service": "Service"
         }, "Text")
         for service in parser.get_services():
-            code("serviceUrl %s = %s" % (service.name, list(service.ports.values())[0].binding_options["address"]))
+            code("serviceUrl %s = \"%s\"" % (service.name, list(service.ports.values())[0].binding_options["address"]))
         return str(code)
 
     def map_type(self, t):
