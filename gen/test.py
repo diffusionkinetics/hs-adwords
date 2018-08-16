@@ -3,7 +3,6 @@ from src.generators.haskell import *
 w = WSDLParser("adwords.xml")
 import lxml.etree as ET 
 
-print(w.get_schemas())
 
 code = HaskellCodeBuilder()
 code.type("SomeType", [("A", {"x": "Int", "y": "[Char]"})])
