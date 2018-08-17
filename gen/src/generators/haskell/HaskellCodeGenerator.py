@@ -23,11 +23,17 @@ class HaskellCodeGenerator(CodeGenerator):
             "long": "Int"
         }.get(t[t.find(":")+1:], t[t.find(":")+1:])
 
-    def complex_type(self, code, ct):
+    def complex_type(self, parser, code, ct):
         fields = {}
         for sequence in ct.sequences:
             for e in sequence.elements:
-                fields[e.name] = self.map_type(e.type)
+                fields[e.name] = self.map_type(e.type if e.type != "" else e.simple_types[0].name)
+        if len(ct.complex_contents) > 0:
+            for extension in ct.complex_contents[0].extensions:
+                base = [c for schema in parser.get_schemas() for c in schema.complex_types if c.name == extension.base[extension.base.find(":")+1:]][0]
+                for sequence in base.sequences:
+                    for e in sequence.elements:
+                        fields[e.name] = self.map_type(e.type if e.type != "" else e.simple_types[0].name)
         code.type(ct.name, [(ct.name, fields)])
         code("instance ToXML %s where" % ct.name)
         code("  toXML e = element \"%s\" %s" % (ct.name, "do" if fields != {} else ""))
@@ -53,5 +59,5 @@ class HaskellCodeGenerator(CodeGenerator):
         code("  parseIt :: Text -> Eiither ParseError a")
         for schema in parser.get_schemas():
             for ct in schema.complex_types:
-                self.complex_type(code, ct)
+                self.complex_type(parser, code, ct)
         return str(code)
