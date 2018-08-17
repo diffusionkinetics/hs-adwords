@@ -51,6 +51,27 @@ class HaskellCodeGenerator(CodeGenerator):
             " ".join(fields.keys())
         ))
 
+    def simple_type(self, parser, code, st):
+        if len(st.restrictions) > 0:
+            restriction = st.restrictions[0]
+            code("type %s = %s" % (st.name, self.map_type(restriction.base)))
+        elif len(st.lists) > 0:
+            l = st.lists[0]
+            if l.item_type != "":
+                code("type %s = [%s]" % (st.name, self.map_type(l.item_type)))
+            else:
+                self.simple_type(parser, code, l.simple_types[0])
+                code("type %s = [%s]" % (st.name, self.map_type(l.simple_types[0].name)))
+        else: # union
+            union = st.unions[0]
+            if union.member_types != "":
+                code("data %s = %s" % (st.name, " | ".join(["%sAs%s %s" (st.name, t, t) for t in union.member_types.split(" ")])))
+            else:
+                names = [s.name for s in union.simple_types]
+                for s in union.simple_types:
+                    self.simple_type(parser, code, s)
+                code("data %s = %s" % (st.name, " | ".join(["%sAs%s %s" (st.name, t, t) for t in names])))
+
 
     def parse_schemas(self, parser):
         code = HaskellCodeBuilder()
@@ -60,4 +81,6 @@ class HaskellCodeGenerator(CodeGenerator):
         for schema in parser.get_schemas():
             for ct in schema.complex_types:
                 self.complex_type(parser, code, ct)
+            for st in schema.simple_types:
+                self.simple_type(parser, code, st)
         return str(code)
