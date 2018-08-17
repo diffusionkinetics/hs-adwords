@@ -15,6 +15,7 @@ class HaskellCodeGenerator(CodeGenerator):
         return str(code)
 
     def map_type(self, t):
+        t = t.replace(".", "")
         if not ":" in t:
             t = ":" + t
         return {
@@ -22,6 +23,9 @@ class HaskellCodeGenerator(CodeGenerator):
             "int": "Int",
             "long": "Int"
         }.get(t[t.find(":")+1:], t[t.find(":")+1:])
+
+    def map_field_name(self, name):
+        return name[0].lower() + name[1:].replace(".", "")
 
     def complex_type(self, parser, code, ct):
         fields = {}
@@ -34,9 +38,10 @@ class HaskellCodeGenerator(CodeGenerator):
                 for sequence in base.sequences:
                     for e in sequence.elements:
                         fields[e.name] = self.map_type(e.type if e.type != "" else e.simple_types[0].name)
+        fields = {self.map_field_name(k): v for k,v in fields.items()}
         code.type(ct.name, [(ct.name, fields)])
         code("instance ToXML %s where" % ct.name)
-        code("  toXML e = element \"%s\" %s" % (ct.name, "do" if fields != {} else ""))
+        code("  toXML e = element \"%s\" %s" % (ct.name, "$ do" if fields != {} else ""))
         for k,v in fields.items():
             code("    element \"%s\" $ content e.%s" % (k,k))
         code("instance FromXML %s where" % ct.name)
@@ -75,6 +80,10 @@ class HaskellCodeGenerator(CodeGenerator):
 
     def parse_schemas(self, parser):
         code = HaskellCodeBuilder()
+
+        code("import Text.XML.Writer (element, document, elementA, ToXML(..), content, pprint)")
+        code("import Text.XML as P")
+        code("import Data.Text ")
         code("data ParseError = ParseError")
         code("class FromXML a where")
         code("  parseIt :: Text -> Eiither ParseError a")
