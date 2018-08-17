@@ -21,7 +21,7 @@ class HaskellCodeBuilder:
         """
         self.code += "\n\ndata %s = " % name 
         self.code += " | ".join([self.constructor(cname, cfields) for cname, cfields in constructors])
-        self.code += " deriving (Show, Generic)"
+        self.code += " deriving (Show)"
 
     def function(self, name, args, result, expression=None):
         """

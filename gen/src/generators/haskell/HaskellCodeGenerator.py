@@ -19,8 +19,9 @@ class HaskellCodeGenerator(CodeGenerator):
         if not ":" in t:
             t = ":" + t
         return {
-            "string": "String",
+            "string": "Text",
             "int": "Int",
+            "boolean": "Bool",
             "long": "Int"
         }.get(t[t.find(":")+1:], t[t.find(":")+1:])
 
@@ -38,7 +39,7 @@ class HaskellCodeGenerator(CodeGenerator):
                 for sequence in base.sequences:
                     for e in sequence.elements:
                         fields[e.name] = self.map_type(e.type if e.type != "" else e.simple_types[0].name)
-        fields = {self.map_field_name(k): v for k,v in fields.items()}
+        fields = {self.map_field_name(self.map_field_name(ct.name) + k): v for k,v in fields.items()}
         code.type(ct.name, [(ct.name, fields)])
         code("instance ToXML %s where" % ct.name)
         code("  toXML e = element \"%s\" %s" % (ct.name, "$ do" if fields != {} else ""))
@@ -51,35 +52,36 @@ class HaskellCodeGenerator(CodeGenerator):
         code("    Right doc -> Right (parse_%s doc)" % ct.name.lower())
         fn = "parse_%s" % ct.name.lower()
         code("%s :: P.Document -> %s" % (fn, ct.name))
-        code("%s (P.Document _ (P.Element _ _ %s) _) = %s %s" % (fn, ":".join(["(NodeContent %s)" % f for f in fields.keys()]) + ":xs" if fields != {} else "[]", 
+        code("%s (P.Document _ (P.Element _ _ %s) _) = %s %s" % (fn, ":".join(["(NodeContent _%s)" % f for f in fields.keys()]) + ":xs" if fields != {} else "[]", 
             ct.name, 
-            " ".join(fields.keys())
+            " ".join(["_%s" % f for f in fields.keys()])
         ))
 
     def simple_type(self, parser, code, st):
         if len(st.restrictions) > 0:
             restriction = st.restrictions[0]
-            code("type %s = %s" % (st.name, self.map_type(restriction.base)))
+            code("type %s = %s" % (self.map_type(st.name), self.map_type(restriction.base)))
         elif len(st.lists) > 0:
             l = st.lists[0]
             if l.item_type != "":
-                code("type %s = [%s]" % (st.name, self.map_type(l.item_type)))
+                code("type %s = [%s]" % (self.map_type(st.name), self.map_type(l.item_type)))
             else:
                 self.simple_type(parser, code, l.simple_types[0])
-                code("type %s = [%s]" % (st.name, self.map_type(l.simple_types[0].name)))
+                code("type %s = [%s]" % (self.map_type(st.name), self.map_type(l.simple_types[0].name)))
         else: # union
             union = st.unions[0]
             if union.member_types != "":
-                code("data %s = %s" % (st.name, " | ".join(["%sAs%s %s" (st.name, t, t) for t in union.member_types.split(" ")])))
+                code("data %s = %s" % (self.map_type(st.name), " | ".join(["%sAs%s %s" (st.name, t, t) for t in union.member_types.split(" ")])))
             else:
                 names = [s.name for s in union.simple_types]
                 for s in union.simple_types:
                     self.simple_type(parser, code, s)
-                code("data %s = %s" % (st.name, " | ".join(["%sAs%s %s" (st.name, t, t) for t in names])))
+                code("data %s = %s" % (self.map_type(st.name), " | ".join(["%sAs%s %s" (st.name, t, t) for t in names])))
 
 
     def parse_schemas(self, parser):
         code = HaskellCodeBuilder()
+        code("{-# LANGUAGE OverloadedStrings #-}")
         code("module Schema where")
 
         code("import Text.XML.Writer (element, document, elementA, ToXML(..), content, pprint)")
@@ -87,7 +89,7 @@ class HaskellCodeGenerator(CodeGenerator):
         code("import Data.Text ")
         code("data ParseError = ParseError")
         code("class FromXML a where")
-        code("  parseIt :: Text -> Eiither ParseError a")
+        code("  parseIt :: Text -> Either ParseError a")
         for schema in parser.get_schemas():
             for ct in schema.complex_types:
                 self.complex_type(parser, code, ct)
