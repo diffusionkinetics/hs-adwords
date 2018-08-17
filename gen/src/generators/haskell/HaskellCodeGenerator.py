@@ -80,6 +80,7 @@ class HaskellCodeGenerator(CodeGenerator):
 
     def parse_schemas(self, parser):
         code = HaskellCodeBuilder()
+        code("module Schema where")
 
         code("import Text.XML.Writer (element, document, elementA, ToXML(..), content, pprint)")
         code("import Text.XML as P")
