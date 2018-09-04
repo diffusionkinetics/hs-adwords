@@ -28,17 +28,25 @@ class HaskellCodeGenerator(CodeGenerator):
     def map_field_name(self, name):
         return name[0].lower() + name[1:].replace(".", "")
 
+    def determine_type(self, e):
+        f = self.map_type(e.type if e.type != "" else e.simple_types[0].name)
+        if e.min_occurs == "0" and e.max_occurs == "1":
+            f = "Maybe %s" % f
+        elif e.min_occurs != "" and e.max_occurs != "":
+            f = "[%s]" % f
+        return f
+
     def complex_type(self, parser, code, ct):
         fields = {}
         for sequence in ct.sequences:
             for e in sequence.elements:
-                fields[e.name] = self.map_type(e.type if e.type != "" else e.simple_types[0].name)
+                fields[e.name] = self.determine_type(e)
         if len(ct.complex_contents) > 0:
             for extension in ct.complex_contents[0].extensions:
                 base = [c for schema in parser.get_schemas() for c in schema.complex_types if c.name == extension.base[extension.base.find(":")+1:]][0]
                 for sequence in base.sequences:
                     for e in sequence.elements:
-                        fields[e.name] = self.map_type(e.type if e.type != "" else e.simple_types[0].name)
+                        fields[e.name] = self.determine_type(e)
         fields = {self.map_field_name(self.map_field_name(ct.name) + k): v for k,v in fields.items()}
         code.type(ct.name, [(ct.name, fields)])
         code("instance ToXML %s where" % ct.name)
