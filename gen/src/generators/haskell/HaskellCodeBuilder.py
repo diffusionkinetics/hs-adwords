@@ -9,7 +9,7 @@ class HaskellCodeBuilder:
         code += "%s " % name 
         if fields:
             code += "{ "
-        code += "\n\t, ".join(["%s :: %s" % (field, typename) for field,typename in fields.items()])
+        code += "\n  , ".join(["%s :: %s" % (field, typename) for field,typename in fields.items()])
         if fields:
             code += " }"
         return code
@@ -21,7 +21,7 @@ class HaskellCodeBuilder:
         """
         self.code += "\n\ndata %s = " % name 
         self.code += " | ".join([self.constructor(cname, cfields) for cname, cfields in constructors])
-        self.code += " deriving (Show)"
+        self.code += " deriving (Show)\n"
 
     def function(self, name, args, result, expression=None):
         """
@@ -39,5 +39,5 @@ class HaskellCodeBuilder:
     def __str__(self):
         return self.code
 
-    def __call__(self, code):
-        self.code += "\n%s\n" % code
+    def __call__(self, code=""):
+        self.code += "%s\n" % code
