@@ -49,6 +49,8 @@ class HaskellCodeGenerator(CodeGenerator):
                         fields[e.name] = self.determine_type(e)
         fields = {self.map_field_name(self.map_field_name(ct.name) + k): v for k,v in fields.items()}
         code.type(ct.name, [(ct.name, fields)])
+        code("instance Default %s where" % ct.name)
+        code("  def = %s { %s }" % (ct.name, ", ".join(["%s = def" % n for n,f in fields.items()])))
         code("instance ToXML %s where" % ct.name)
         code("  toXML e = element \"%s\" %s" % (ct.name, "$ do" if fields != {} else ""))
         for k,v in fields.items():
@@ -103,6 +105,7 @@ class HaskellCodeGenerator(CodeGenerator):
         code("import Text.XML.Writer (element, document, elementA, ToXML(..), content, pprint)")
         code("import Text.XML as P")
         code("import Data.Text ")
+        code("import Data.Default (Default(..))")
         code("data ParseError = ParseError")
         code("class FromXML a where")
         code("  parseIt :: Text -> Either ParseError a")
