@@ -4,14 +4,6 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-soappy = "*"
-"soappy-py3" = "*"
-lxml = "*"
-zeep = "*"
-ptpython = "*"
-"suds-py3" = "*"
-xmlschema = "*"
-generateds = "*"
 
 [dev-packages]
 
