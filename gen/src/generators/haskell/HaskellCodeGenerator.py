@@ -11,7 +11,10 @@ class HaskellCodeGenerator(CodeGenerator):
             "service": "Service"
         }, "Text")
         for service in parser.get_services():
-            code("serviceUrl %s = \"%s\"" % (service.name, list(service.ports.values())[0].binding_options["address"]))
+            code("serviceUrl %s = \"%s\"" % (
+                service.name, 
+                list(service.ports.values())[0].binding_options["address"]
+            ))
         return str(code)
 
     def map_type(self, t):
@@ -62,17 +65,21 @@ class HaskellCodeGenerator(CodeGenerator):
                 code("        (Nothing) -> content \"\"")
             else:
                 code("    element \"%s\" $ content $ %s e" % (k,k))
-        #code("instance FromXML %s where" % ct.name)
-        #code("  parseIt :: Text -> %s" % ct.name)
-        #code("  parseIt text = case P.parseText def text of ")
-        #code("    Left err -> Left ParseError")
-        #code("    Right doc -> Right (parse_%s doc)" % ct.name.lower())
-        #fn = "parse_%s" % ct.name.lower()
-        #code("%s :: P.Document -> %s" % (fn, ct.name))
-        #code("%s (P.Document _ (P.Element _ _ %s) _) = %s %s" % (fn, ":".join(["(NodeContent _%s)" % f for f in fields.keys()]) + ":xs" if fields != {} else "[]", 
-        #    ct.name, 
-        #    " ".join(["_%s" % f for f in fields.keys()])
-        #))
+        code("instance FromXML %s where" % ct.name)
+        code("  parse = do")
+        for k,v in fields.items():
+            if v.startswith("["):
+                code("    _%s <- multipleElementContent \"%s\"" % (k,k))
+            elif v.startswith("Maybe "):
+                code("    _%s <- maybeElementContent \"%s\"" % (k,k))
+            else:
+                code("    _%s <- elementContent \"%s\"" % (k,k))
+        code("    return $ %s {" % ct.name)
+        first = True
+        for k,v in fields.items():
+            code("      %s%s = _%s" % (", " if not first else "", k,k))
+            first = False 
+        code("      }")
 
     def simple_type(self, parser, code, st):
         if len(st.restrictions) > 0:
@@ -105,10 +112,9 @@ class HaskellCodeGenerator(CodeGenerator):
         code("import Text.XML.Writer (element, document, elementA, ToXML(..), content, pprint)")
         code("import Text.XML as P")
         code("import Data.Text ")
+        code("import ParseXML")
         code("import Data.Default (Default(..))")
         code("data ParseError = ParseError")
-        code("class FromXML a where")
-        code("  parseIt :: Text -> Either ParseError a")
         for schema in parser.get_schemas():
             for ct in schema.complex_types:
                 self.complex_type(parser, code, ct)

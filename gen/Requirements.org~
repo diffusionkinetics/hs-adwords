@@ -1,0 +1,41 @@
+
+* Service code generation 
+
+for each service in available WSDL services we need to:
+
++ add constructor for that service in Service data type such that we have:
+
+#+BEGIN_EXAMPLE
+
+  data Service =
+       Service1 |
+       Service2 |
+       ....
+#+END_EXAMPLE
+
++ serviceUrl :: Service -> String -- for given service, returns its url, can be done with pattern matching
++ nameSpace :: Service -> Text -- for given service returns its namespace, also can be pattern matched 
+
+
+
+* Schema elements 
+
++ for every schema element X we should have type XAttributes which is record of its attributes and then X type which is of its attributes and other sequence elements
+or something else (chosen by appropirate constructor)
+
+* Parsing XML
+
+https://www.stackage.org/haddock/lts-12.4/xml-conduit-1.8.0/Text-XML.html
+
+use:
+
+#+BEGIN_EXAMPLE
+  case parseText def "some text" of
+       Left e -> // handle exception
+       Right doc -> Document returned
+#+END_EXAMPLE
+
+* Rendering XML 
+
+http://hackage.haskell.org/package/xml-conduit-writer-0.1.1.2/docs/Text-XML-Writer.html
+
